@@ -359,7 +359,7 @@ kube-system   coredns-74ff55c5b-cq7hh              1/1     Running   0          
 kube-system   coredns-74ff55c5b-wx4nf              1/1     Running   0          42s   10.244.1.5     k8s-node1    <none>           <none>
 ```
 
-至此我们完成了利用kubeadm部署K8s集群的全部流程
+## 至此我们完成了利用kubeadm部署K8s集群的全部流程
 
 
 
