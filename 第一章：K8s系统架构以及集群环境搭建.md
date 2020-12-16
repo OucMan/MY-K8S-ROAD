@@ -242,6 +242,134 @@ sudo kubectl apply -f kube-flannel.yml
 
 ## 2.6 配置Node
 
+在连接到master之前，首先将需要镜像拉取下来，具体如下，
+
+### 2.6.1 拉取基础组件镜像
+
+```bash
+sudo docker pull registry.cn-hangzhou.aliyuncs.com/google_containers/kube-proxy:v1.20.0
+sudo docker pull registry.cn-hangzhou.aliyuncs.com/google_containers/coredns:1.7.0
+sudo docker pull registry.cn-hangzhou.aliyuncs.com/google_containers/pause:3.2
+sudo docker tag registry.cn-hangzhou.aliyuncs.com/google_containers/kube-proxy:v1.20.0 k8s.gcr.io/kube-proxy:v1.20.0
+sudo docker tag registry.cn-hangzhou.aliyuncs.com/google_containers/coredns:1.7.0 k8s.gcr.io/coredns:1.7.0
+sudo docker tag registry.cn-hangzhou.aliyuncs.com/google_containers/pause:3.2 k8s.gcr.io/pause:3.2
+```
+
+### 2.6.2 拉取flannel镜像
+
+```bash
+sudo docker pull registry.cn-shanghai.aliyuncs.com/leozhanggg/flannel:v0.12.0-amd64
+sudo docker pull registry.cn-shanghai.aliyuncs.com/leozhanggg/flannel:v0.12.0-arm64
+sudo docker pull registry.cn-shanghai.aliyuncs.com/leozhanggg/flannel:v0.12.0-arm
+sudo docker pull registry.cn-shanghai.aliyuncs.com/leozhanggg/flannel:v0.12.0-ppc64le
+sudo docker pull registry.cn-shanghai.aliyuncs.com/leozhanggg/flannel:v0.12.0-s390x
+```
+
+```bash
+sudo docker tag registry.cn-shanghai.aliyuncs.com/leozhanggg/flannel:v0.12.0-amd64 quay.io/coreos/flannel:v0.12.0-amd64
+sudo docker tag registry.cn-shanghai.aliyuncs.com/leozhanggg/flannel:v0.12.0-arm64 quay.io/coreos/flannel:v0.12.0-arm64
+sudo docker tag registry.cn-shanghai.aliyuncs.com/leozhanggg/flannel:v0.12.0-arm quay.io/coreos/flannel:v0.12.0-arm
+sudo docker tag registry.cn-shanghai.aliyuncs.com/leozhanggg/flannel:v0.12.0-ppc64le quay.io/coreos/flannel:v0.12.0-ppc64le
+sudo docker tag registry.cn-shanghai.aliyuncs.com/leozhanggg/flannel:v0.12.0-s390x quay.io/coreos/flannel:v0.12.0-s390x
+```
+### 2.6.3 kubeadm join
+
+完成基础镜像的下载后，在node中运行命令
+
+```bash
+sudo kubeadm join 10.10.10.147:6443 --token xxxxxxxx \
+    --discovery-token-ca-cert-hash sha256:xxxxxxxx
+```
+该命令在Master成功执行完kubeadm init命令后会提供出来，直接复制过来就好
+
+## 2.7 集群测试
+
+执行完毕后在，master节点上运行sudo kubectl get nodes发现已经能够检测到加入集群的两个node
+
+### 2.7.1 查看所有的pod
+
+```bash
+master@k8s-master:~$ sudo kubectl get pod --all-namespaces -o wide
+[sudo] password for master: 
+NAMESPACE     NAME                                 READY   STATUS    RESTARTS   AGE   IP             NODE         NOMINATED NODE   READINESS GATES
+kube-system   coredns-74ff55c5b-cq7hh              1/1     Running   0          88m   10.244.2.5     k8s-node2    <none>           <none>
+kube-system   coredns-74ff55c5b-wx4nf              1/1     Running   0          87m   10.244.1.5     k8s-node1    <none>           <none>
+kube-system   etcd-k8s-master                      1/1     Running   0          14h   10.10.10.147   k8s-master   <none>           <none>
+kube-system   kube-apiserver-k8s-master            1/1     Running   0          14h   10.10.10.147   k8s-master   <none>           <none>
+kube-system   kube-controller-manager-k8s-master   1/1     Running   0          14h   10.10.10.147   k8s-master   <none>           <none>
+kube-system   kube-flannel-ds-amd64-hzxmd          1/1     Running   0          14h   10.10.10.148   k8s-node1    <none>           <none>
+kube-system   kube-flannel-ds-amd64-tn6d9          1/1     Running   0          14h   10.10.10.147   k8s-master   <none>           <none>
+kube-system   kube-flannel-ds-amd64-zph9w          1/1     Running   0          14h   10.10.10.149   k8s-node2    <none>           <none>
+kube-system   kube-proxy-fh559                     1/1     Running   0          14h   10.10.10.149   k8s-node2    <none>           <none>
+kube-system   kube-proxy-s2xln                     1/1     Running   0          14h   10.10.10.147   k8s-master   <none>           <none>
+kube-system   kube-proxy-x8tq6                     1/1     Running   0          14h   10.10.10.148   k8s-node1    <none>           <none>
+kube-system   kube-scheduler-k8s-master            1/1     Running   3          14h   10.10.10.147   k8s-master   <none>           <none>
+```
+
+### 2.7.2 查看所有的node
+
+```bash
+master@k8s-master:~$ sudo kubectl get nodes
+NAME         STATUS   ROLES                  AGE   VERSION
+k8s-master   Ready    control-plane,master   14h   v1.20.0
+k8s-node1    Ready    <none>                 14h   v1.20.0
+k8s-node2    Ready    <none>                 14h   v1.20.0
+```
+
+### 2.7.3 可能的错误
+
+在部署过程中，我遇到了一个错误，就是coredns的状态是CrashLoopBackOff，如下
+
+```bash
+NAMESPACE     NAME                                 READY   STATUS             RESTARTS   AGE   IP             NODE         NOMINATED NODE   READINESS GATES
+kube-system   coredns-74ff55c5b-c5wqx              0/1     CrashLoopBackOff   3          69s   10.244.2.4     k8s-node2    <none>           <none>
+```
+
+这个问题的解决方案如下：
+
+### 2.7.3.1 修改node中的/etc/resolv.conf文件
+
+修改所有node中的/etc/resolv.conf文件解决，指定nameserver为8.8.8.8，如下
+
+```bash
+node1@k8s-node1:~$ vi /etc/resolv.conf 
+
+# Dynamic resolv.conf(5) file for glibc resolver(3) generated by resolvconf(8)
+#     DO NOT EDIT THIS FILE BY HAND -- YOUR CHANGES WILL BE OVERWRITTEN
+# nameserver 127.0.1.1
+# search localdomain
+
+nameserver 8.8.8.8
+```
+
+### 2.7.3.2 重启node机器上的docker
+
+```bash
+sudo systemctl restart docker
+```
+
+### 2.7.3.3 在master机器上将coredns pod删除
+```bash
+sudo kubectl delete pod coredns-xxx  --grace-period=0 --force -n kube-system
+```
+删除pod后，controller会自动将其重新拉起，这下就可以看到coredns正常运行了
+```bash
+NAMESPACE     NAME                                 READY   STATUS    RESTARTS   AGE   IP             NODE         NOMINATED NODE   READINESS GATES
+kube-system   coredns-74ff55c5b-cq7hh              1/1     Running   0          62s   10.244.2.5     k8s-node2    <none>           <none>
+kube-system   coredns-74ff55c5b-wx4nf              1/1     Running   0          42s   10.244.1.5     k8s-node1    <none>           <none>
+```
+
+至此我们完成了利用kubeadm部署K8s集群的全部流程
+
+
+
+
+
+
+
+
+
+
 
 
 
