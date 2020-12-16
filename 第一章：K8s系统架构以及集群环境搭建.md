@@ -38,9 +38,8 @@ sudo setenforce 0
 修改/etc/hostname，将里面的内容换为机器的主机名,如master节点
 ```bash
 master@k8s-master:~$ vi /etc/hostname 
-
 k8s-master
-~  
+...
 ```
 
 ### 配置hosts文件
@@ -61,7 +60,7 @@ fe00::0 ip6-localnet
 ff00::0 ip6-mcastprefix
 ff02::1 ip6-allnodes
 ff02::2 ip6-allrouters
-~            
+...        
 ```
 
 ### 重启
@@ -72,12 +71,56 @@ ff02::2 ip6-allrouters
 sudo reboot 
 ```
 
+## 安装docker（Master和Node）
 
+### 安装相关工具
 
+```bash
+sudo apt-get update && sudo apt-get install -y apt-transport-https curl
+```
 
+### 添加密钥
 
+```bash
+sudo curl -fsSL https://download.docker.com/linux/ubuntu/gpg | sudo apt-key add -
+```
 
+### 安装docker
 
+```bash
+sudo apt-get install docker.io -y
+```
+
+### 查看docker版本
+
+```bash
+sudo docker version
+```
+
+### 启动docker服务
+
+```bash
+sudo systemctl enable docker
+sudo systemctl start docker
+sudo systemctl status docker
+```
+
+### 更换阿里云镜像仓库
+
+创建/etc/docker/daemon.json，并添加如下内容
+```bash
+{
+    "registry-mirrors": ["https://alzgoonw.mirror.aliyuncs.com"],
+    "live-restore": true
+}
+```
+
+### 重起docker服务
+
+```bash
+sudo systemctl daemon-reload
+sudo systemctl restart docker
+```
 
 
 
