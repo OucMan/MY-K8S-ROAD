@@ -4,7 +4,7 @@
 
 一个Kubernetes集群由很多的节点组成，这些节点被分成两种类型，Master节点和Worker节点，两者之间的网络架构符合C/S架构。其中Master节点是集群的控制平台（control plane），主要负责集群中的全局决策（例如，调度）以及探测并响应集群事件（例如，当 Deployment 的实际 Pod 副本数未达到 replicas 字段的规定时，启动一个新的 Pod），worker节点运行着用户实际部署的应用，维护运行中的 Pod 并提供 Kubernetes运行时环境。
 
-![image](https://github.com/OucMan/MY-K8S-ROAD/blob/main/pic/k8s-architecture.png)
+![k8s架构图](https://github.com/OucMan/MY-K8S-ROAD/blob/main/pic/k8s-architecture.png)
 
 ## Master节点组件
 
