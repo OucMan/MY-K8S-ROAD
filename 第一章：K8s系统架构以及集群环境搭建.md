@@ -122,6 +122,31 @@ sudo systemctl daemon-reload
 sudo systemctl restart docker
 ```
 
+## 2.4 安装kubectl，kubelet，kubeadm（Master和Node）
+
+### 2.4.1 添加秘钥
+```bash
+sudo curl -s https://mirrors.aliyun.com/kubernetes/apt/doc/apt-key.gpg | sudo apt-key add -
+```
+### 2.4.2 添加阿里云源
+```bash
+sudo tee /etc/apt/sources.list.d/kubernetes.list <<-'EOF'
+deb https://mirrors.aliyun.com/kubernetes/apt kubernetes-xenial main
+EOF
+sudo apt-get update
+```
+### 2.4.3 安装kubectl，kubelet，kubeadm
+```bash
+sudo apt-get install -y kubelet kubeadm kubectl
+```
+
+## 2.5 配置Master
+
+
+
+## 2.6 配置Node
+
+
 
 
 
