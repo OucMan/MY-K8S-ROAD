@@ -30,7 +30,8 @@ Pod是一个抽象的概念，它没有具体的实体，它背后其实就是�
 
 因为一个Pod中的容器共享网络空间，因此它们共享相同的IP地址和端口空间，这意味着同一个Pod中的容器进程不能绑定到相同的端口号，否则会导致端口冲突，而一个Pod中的容器之间通信可以通过localhost:port来完成。
 
-https://github.com/OucMan/MY-K8S-ROAD/blob/main/pic/pod%E5%85%B1%E4%BA%AB%E7%BD%91%E7%BB%9C.png
+![Pod共享网络](https://github.com/OucMan/MY-K8S-ROAD/blob/main/pic/pod%E5%85%B1%E4%BA%AB%E7%BD%91%E7%BB%9C.png)
+
 
 ### 1.4.2 共享存储
 
