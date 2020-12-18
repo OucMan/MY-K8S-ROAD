@@ -70,6 +70,7 @@ var handler = function(request, response) {
 var www = http.createServer(handler);
 www.listen(8080);
 ```
+该应用在启动后，控制台会输出日志信息“Kubia server starting...”，接收到请求后，只是返回一句话“You've hit” + 主机名，简单的小应用帮助我们学习。
 
 Dockerfile和app.js放置在一个目录，然后运行命令
 
@@ -117,15 +118,113 @@ spec:
 
 以上的各个部分其实就是yaml文件的基本组成部门，创建其它的k8s资源时，也是采用相同的结构。
 
-
-
-
 #### 1.5.1.3 创建Pod
 
+执行如下命令来创建Pod
+```Bash
+kubectl create -f kubia-manual.yaml
+```
 
+查看Pod是否创建成功
+```Bash
+master@k8s-master:~$ sudo kubectl get pods -o wide
+NAME           READY   STATUS    RESTARTS   AGE   IP           NODE        NOMINATED NODE   READINESS GATES
+kubia-manual   1/1     Running   0          33m   10.244.1.6   k8s-node1   <none>           <none>
+```
 
+可以看到名字为kubia-manual的Pod已经被创建成功，它被调度到k8s-node1节点上。
 
+查看新创建的Pod的详情描述，如下
+```Bash
+master@k8s-master:~$ sudo kubectl describe pod kubia-manual
+Name:         kubia-manual
+Namespace:    default
+Priority:     0
+Node:         k8s-node1/10.10.10.148
+Start Time:   Thu, 17 Dec 2020 19:17:03 -0800
+Labels:       <none>
+Annotations:  <none>
+Status:       Running
+IP:           10.244.1.6
+IPs:
+  IP:  10.244.1.6
+Containers:
+  kubia:
+    Container ID:   docker://234beca7d9f0426eb786ac5f2b93be14a5f2f32c252f02de5e2082d989a35cbe
+    Image:          luksa/kubia:v1
+    Image ID:       docker://sha256:ca22f04a09c7a843538cc1826df3a8a91b5d17827e610143fd784d32c8bcdb5a
+    Port:           8080/TCP
+    Host Port:      0/TCP
+    State:          Running
+      Started:      Thu, 17 Dec 2020 19:17:05 -0800
+    Ready:          True
+    Restart Count:  0
+    Environment:    <none>
+    Mounts:
+      /var/run/secrets/kubernetes.io/serviceaccount from default-token-vs6vn (ro)
+Conditions:
+  Type              Status
+  Initialized       True 
+  Ready             True 
+  ContainersReady   True 
+  PodScheduled      True 
+Volumes:
+  default-token-vs6vn:
+    Type:        Secret (a volume populated by a Secret)
+    SecretName:  default-token-vs6vn
+    Optional:    false
+QoS Class:       BestEffort
+Node-Selectors:  <none>
+Tolerations:     node.kubernetes.io/not-ready:NoExecute op=Exists for 300s
+                 node.kubernetes.io/unreachable:NoExecute op=Exists for 300s
+Events:
+  Type    Reason     Age   From               Message
+  ----    ------     ----  ----               -------
+  Normal  Scheduled  35m   default-scheduler  Successfully assigned default/kubia-manual to k8s-node1
+  Normal  Pulled     35m   kubelet            Container image "luksa/kubia:v1" already present on machine
+  Normal  Created    35m   kubelet            Created container kubia
+  Normal  Started    35m   kubelet            Started container kubia
+```
 
+查看一下容器的日志信息
+
+```Bash
+master@k8s-master:~$ sudo kubectl logs kubia-manual -c kubia
+Kubia server starting...
+```
+当Pod中只有一个容器时，可以不需要使用-c来指定容器名
+```Bash
+master@k8s-master:~$ sudo kubectl logs kubia-manual
+Kubia server starting...
+```
+
+同理如果想要进入到Pod的容器中，可以执行
+```Bash
+sudo kubectl -n your_pod_namespace exec -it your_pod_name -c your_container_name -- sh
+```
+哪些参数能省能不省，情况和上述一样
+
+至此，对于Pod我们还差一个事情没有测试，那就是我们还没有测试Pod中的应用业务到底有没有成功运行呢，也就是向该Pod发请求，能不能正常得到响应呢，别急，下面就来测试。
+
+如果想在不涉及Service（后面章节会讲述）的情况下雨与某个Pod进行通信（比如进行调式），我们可以通过kubectl port-forward命令将本机端口收到的信息转发到Pod监听的端口，比如下面的命令可以将机器的本地端口888转发到kubia-manual Pod的端口8080。
+```Bash
+sudo kubectl port-forward kubia-manual 8888:8080
+```
+
+我们来测试
+
+首先通过端口转发连接到Pod
+```Bash
+master@k8s-master:~$ sudo kubectl port-forward kubia-manual 8888:8080
+Forwarding from 127.0.0.1:8888 -> 8080
+Forwarding from [::1]:8888 -> 8080
+```
+这个命令会一直持续运行，因此我们在master节点上再打开一个终端窗口利用curl向localhost:8888发起请求，如下
+```Bash
+master@k8s-master:~$ curl localhost:8888
+You've hit kubia-manual
+```
+酷炫，访问成功，因此通过运行在localhost:8888上运行的kubectl port-forward代理，可以是的curl命令向Pod发送一个http请求，并成功获得响应。
 
 ### 1.5.2 停止和移除Pod
 
