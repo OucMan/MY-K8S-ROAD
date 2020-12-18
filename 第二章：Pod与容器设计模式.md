@@ -211,6 +211,8 @@ sudo kubectl -n your_pod_namespace exec -it your_pod_name -c your_container_name
 sudo kubectl port-forward kubia-manual 8888:8080
 ```
 
+![kubectl port-forward](https://github.com/OucMan/MY-K8S-ROAD/blob/main/pic/port-forward.png)
+
 我们来测试
 
 首先通过端口转发连接到Pod
