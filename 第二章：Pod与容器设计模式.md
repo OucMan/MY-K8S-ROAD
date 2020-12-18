@@ -226,7 +226,27 @@ You've hit kubia-manual
 ```
 酷炫，访问成功，因此通过运行在localhost:8888上运行的kubectl port-forward代理，可以是的curl命令向Pod发送一个http请求，并成功获得响应。
 
-### 1.5.2 停止和移除Pod
+### 1.5.2 移除Pod
+
+通过如下命令，直接使用Pod的名字来删除Pod的过程中，实际上我们在指示K8s终止该pod中的所有容器。K8s向进程发送一个SIGTERM信号并等待一定的秒数（默认为30），使其正常关闭，如果它没有及时关闭，则通过SIGKILL终止该进程。
+
+```Bash
+master@k8s-master:~$ sudo kubectl get pods -o wide
+NAME           READY   STATUS    RESTARTS   AGE   IP           NODE        NOMINATED NODE   READINESS GATES
+kubia-manual   1/1     Running   0          64m   10.244.1.6   k8s-node1   <none>           <none>
+master@k8s-master:~$ sudo kubectl delete pod kubia-manual
+pod "kubia-manual" deleted
+master@k8s-master:~$ sudo kubectl get pods -o wide
+No resources found in default namespace.
+master@k8s-master:~$ 
+```
+因此删除命令执行需要等待一段时间...
+
+注：如果要删除多个Pod，可以在Pod名字之间通过空格来分割，即
+
+```Bash
+master@k8s-master:~$ sudo kubectl delete pod pod1 pod 2 pod3
+```
 
 ### 1.5.3 说明
 
