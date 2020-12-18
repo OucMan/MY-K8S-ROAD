@@ -39,11 +39,73 @@ Pod是一个抽象的概念，它没有具体的实体，它背后其实就是�
 
 ## 1.5 K8s对Pod的操作
 
+我们在搭建好的集群环境中来简单地实操一下，了解K8s对Pod的创建删除等操作。
+
 ### 1.5.1 利用YAML描述文件创建Pod
+
+我们创建一个Pod，该Pod中只有一个容器，其中运行着nginx服务器以及对应的app，该应用监听的端口为8080，我们可以提前将该容器对应的镜像在node主机上创建一下，然后编写yaml文件，最后利用kubectl命令来完成Pod的创建。具体步骤如下。
+
+#### 1.5.1.1 创建容器镜像
+
+*Dockerfile*
+```
+FROM node:7
+ADD app.js /app.js
+ENTRYPOINT ["node", "app.js"]
+```
+
+*app.js*
+```
+const http = require('http');
+const os = require('os');
+
+console.log("Kubia server starting...");
+
+var handler = function(request, response) {
+  console.log("Received request from " + request.connection.remoteAddress);
+  response.writeHead(200);
+  response.end("You've hit " + os.hostname() + "\n");
+};
+
+var www = http.createServer(handler);
+www.listen(8080);
+```
+
+Dockerfile和app.js放置在一个目录，然后运行命令
+
+```bash
+sudo docker build -f ./Dockerfile . -t luksa/kubia:v1
+```
+
+查看镜像是否创建成功
+
+```
+node1@k8s-node1:~$ sudo docker images
+REPOSITORY                                                       TAG                 IMAGE ID            CREATED             SIZE
+luksa/kubia                                                      v1                  ca22f04a09c7        2 hours ago         660MB
+k8s.gcr.io/kube-proxy                                            v1.20.0             10cc881966cf        9 days ago          118MB
+registry.cn-hangzhou.aliyuncs.com/google_containers/kube-proxy   v1.20.0             10cc881966cf        9 days ago          118MB
+k8s.gcr.io/coredns                                               1.7.0               bfe3a36ebd25        6 months ago        45.2MB
+...
+
+```
+自此镜像创建完成，在另一个node主机上执行相同的操作，使之也得到相同的镜像（这一步可采用多种方式，比如docker镜像到处导入的操作）。
+
+#### 1.5.1.2 编写yaml文件
+
+
+#### 1.5.1.3 创建Pod
+
+
+
+
+
 
 ### 1.5.2 停止和移除Pod
 
 ### 1.5.3 说明
+
+本实践中，我们是直接创建的Pod，而没有与之相关的控制器（如Deployment\Job等），但是在实际应用中，一般都是通过创建如Deployment等控制器的方式来创建Pod，以实现Pod的灵活管理和高可用性。
 
 # 2、容器设计模式
 
