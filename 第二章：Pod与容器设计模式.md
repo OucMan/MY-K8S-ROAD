@@ -110,9 +110,9 @@ spec:
 
 文件解析：
 
-* apiVersion用来指明该描述文件遵循v1版本的K8s Api **
-* kind用来指明本段代码描述的是一个Pod类型的资源 **
-* metadata为该Pod的元数据，其中设置了该Pod的name为kubia-manual **
+* apiVersion用来指明该描述文件遵循v1版本的K8s Api
+* kind用来指明本段代码描述的是一个Pod类型的资源
+* metadata为该Pod的元数据，其中设置了该Pod的name为kubia-manual
 * spec用来阐述该Pod的期望状态，其中containers描述了Pod中的容器信息，在本例中，该容器使用的镜像为luksa/kubia:v1，名字是kubia，同时暴露出的端口是tcp:8080
 
 以上的各个部分其实就是yaml文件的基本组成部门，创建其它的k8s资源时，也是采用相同的结构。
