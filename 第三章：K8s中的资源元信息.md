@@ -122,12 +122,26 @@ NAME              READY   STATUS    RESTARTS   AGE   IP           NODE        NO
 kubia-manual-v2   1/1     Running   0          29m   10.244.2.6   k8s-node2   <none>           <none>            creation_method=manual,env=debug
 ```
 
-
 ### 1.1.5 标签总结
 
+标签本质上就是键值对，用来标记K8s资源，结合标签选择器可以灵活地实现资源的选择和组合。
+
 ## 1.2 Annotations
+
+注解Annotations，一般是系统或者工具用来存储资源的非标示性信息，可以用来扩展资源的spec/status的描述，本质上Annotations也是键值对，只是与标签不同的是，注解不是为了保存标识信息而存在的，它不能像标签一样用于对资源进行分组，因此不存在注解选择器。还有一个显著的区别就是，在创建注解的时候，值那部分使用引号括起来，可以当做是字符串，该字符串中包含空格，逗号等等，这在标签中是不可以的。操作注解的命令时kubectl annotate，如
+
+```
+sudo kubectl annotate pod kubia-manual-v2 my-annotate=‘my annotate,ok’
+```
+其余的添加、修改和删除，和标签的命令格式相同。
 
 
 ## 1.3 OwnerReference
 
+资源的OwnerReference用来记录该资源的创建者，比如Pod控制器会创建对应的归属Pod，例replicaset控制器（后面章节会阐述）在操作中会创建Pod，被创建Pod的Ownereference就指向了创建Pod的replicaset，Ownereference使得用户可以方便地查找一个创建资源的对象，另外，还可以用来实现级联删除的效果。
 
+总结：OwnerReference的作用是方便反向查找创建资源的对象以及方便进行级联删除。
+
+## 1.4 总结
+
+Kubernetes资源对象中的元数据部分，主要包括了用来识别资源的标签：Labels， 用来描述资源的注解：Annotations， 用来描述多个资源之间相互关系的OwnerReference。这些元数据在K8s运行中有非常重要的作用。
