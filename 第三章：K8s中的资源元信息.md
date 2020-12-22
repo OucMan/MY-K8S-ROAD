@@ -12,6 +12,36 @@ Metedate主要包括了用于识别资源的标签（Label）、用来描述资�
 
 ### 1.1.1 创建标签
 
+在创建资源时指定标签，比如下面的yaml文件中，在创建Pod时，创建了两个标签，分别是creation_method和env
+
+```
+apiVersion: v1
+kind: Pod
+metadata:
+  name: kubia-manual-v2
+  labels:
+    creation_method: manual
+    env: prod
+spec:
+  containers:
+  - image: luksa/kubia:v1
+    name: kubia
+    ports:
+    - containerPort: 8080
+      protocol: TCP
+```
+
+运行命令
+```Bash
+sudo kubectl create -f kubia-manual-with-labels.yaml
+```
+然后查看Pod和标签的创建情况
+```
+master@k8s-master:~$ sudo kubectl get pods -o wide --show-labels
+NAME              READY   STATUS    RESTARTS   AGE   IP           NODE        NOMINATED NODE   READINESS GATES   LABELS
+kubia-manual-v2   1/1     Running   0          52s   10.244.2.6   k8s-node2   <none>           <none>            creation_method=manual,env=prod
+```
+注意：##查看标签时，命令后要加上--show-labels选项##
 
 
 ### 1.1.2 修改标签
