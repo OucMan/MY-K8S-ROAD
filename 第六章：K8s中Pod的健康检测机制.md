@@ -175,6 +175,30 @@ sudo kubectl logs mypod --previous
 
 # 3. Readiness探测
 
+Readiness探测的配置语法与Liveness探测完全一样，探测类型和结果也相同，配置文件只是将liveness替换为了readiness，如下
+
+```
+apiVersion: v1
+kind: Pod
+metadata:
+  name: kubia-manual
+spec:
+  containers:
+  - image: luksa/kubia:v1
+    name: kubia
+    ports:
+    - containerPort: 8080
+      protocol: TCP
+    readinessProbe:
+      tcpSocket:
+        port: 8080
+      initialDelaySeconds: 5
+      periodSeconds: 5
+```
+
+不同之处在于探测失败后的行为：Liveness探测是杀死异常的容器并用新的正常容器替代他们来把持Pod正常工作，而Readiness探测则是将Pod设置为不可用，并在Service（后面的章节详细阐述）中对应的端点对象中剔除出去，不接收Service转发的请求。因此就绪探针确保只有准备好处理请求的Pod才能接受请求。
+
+Liveness探测和Readiness探测是独立执行的，二者之间没有依赖，所以可以单独使用，也可以同时使用。用Liveness探测判断容器是否需要重启以实现自愈；用Readiness探测判断容器是否已经准备好对外提供服务。
 
 
 # 4. 总结
@@ -183,4 +207,6 @@ Liveness指针是存活指针，它用来判断容器是否存活、判断Pod是
 
 Readiness指针用来判断这个容器是否启动完成，即Pod的condition是否ready。如果探测的一个结果是不成功，那么此时它会从Endpoint上移除，也就是说从接入层上面会把该Pod 进行摘除，直到下一次判断成功，这个 Pod才会再次挂到相应的Endpoint之上。
 
-一句话，Liveness指针探测Pod是否正常存在，Readiness指针探测Pod是否能够正常提供服务，另外探测机制是由承载Pod的节点上的Kubelet执行的，与Master节点上的控制器没有关系。
+一句话，Liveness指针探测Pod是否正常存在，Readiness指针探测Pod是否能够正常提供服务，Liveness探测可以告诉K8s什么时候通过重启容器实现自愈；Readiness探测则是告诉K8s什么时候可以将Pod加入到Service负载均衡池（后面章节会阐述）中，对外提供服务。另外探测机制是由承载Pod的节点上的Kubelet执行的，与Master节点上的控制器没有关系。
+
+
