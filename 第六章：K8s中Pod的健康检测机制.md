@@ -36,16 +36,43 @@ spec:
     name: health-check
     args:
     - /bin/sh
-    - c
+    - -c
     - sleep 10; exit 1
 ```
 Pod的restartPolicy设置为OnFailure，默认为Always。
+sleep 10; exit 1模拟容器启动10秒后发生故障。
 
 创建Pod
 ```
 sudo kubectl create -f default-health-check.yaml
 ```
 
+过一会查看Pod的状态
+```
+master@k8s-master:~$ sudo kubectl get pods
+NAME                   READY   STATUS    RESTARTS   AGE
+default-health-check   1/1     Running   2          48s
+```
+
+可看到容器当前已经重启了2次。在该例中，容器进程返回值非零，Kubernetes则认为容器发生故障，需要重启。但是，还有不少情况是发生了故障，但是进程并不会退回，比如访问Web服务器时显示500内部错误，可能是系统超载，也可能是资源死锁，此时httpd进程并没有异常退出，这时候默认的健康检测机制便不能捕获到这种异常，进而无法重启容器。K8s为了解决这个问题，便提出了Liveness探测。
+
+## 2.2 Liveness指针
+
+K8s中有三种探测容器的机制，分别是httpGet，Exec以及tcpSocket，下面来详细介绍每一种方式。
+
+### 2.2.1 httpGet探测方式
+
+它是通过发送http Get请求来进行判断的，当返回码是200-399之间的状态码时，标识这个应用是健康的。
+
+
+### 2.2.2 Exec探测方式
+
+它是通过执行容器中的一个命令来判断当前的服务是否是正常的，当命令行的返回结果是0，则标识容器是健康的。
+
+
+### 2.2.3 tcpSocket探测方式
+
+它是通过探测容器的IP和Port进行TCP健康检查，如果这个TCP的链接能够正常被建立，那么标识当前这个容器是健康的。
 
 
 # 3. Readiness探测
