@@ -64,16 +64,114 @@ K8s中有三种探测容器的机制，分别是httpGet，Exec以及tcpSocket，
 
 它是通过发送http Get请求来进行判断的，当返回码是200-399之间的状态码时，标识这个应用是健康的。
 
+*liveness-http-get-check.yaml*
+```
+apiVersion: v1
+kind: Pod
+metadata:
+  name: kubia-manual
+spec:
+  containers:
+  - image: luksa/kubia:v1
+    name: kubia
+    ports:
+    - containerPort: 8080
+      protocol: TCP
+    livenessProbe:
+      httpGet:
+        path: /
+        port: 8080
+      initialDelaySeconds: 5
+      periodSeconds: 5
+```
+
+文件解析
+
+在原有创建Pod的基础上，增加livenessProbe的定义，指定类型为httpGet，并给清楚访问的路径和端口，以及initialDelaySeconds（pod启动延迟多久进行一次探测）和periodSeconds（探测的周期）。
 
 ### 2.2.2 Exec探测方式
 
 它是通过执行容器中的一个命令来判断当前的服务是否是正常的，当命令行的返回结果是0，则标识容器是健康的。
+
+*liveness-exec-check.yaml*
+```
+apiVersion: v1
+kind: Pod
+metadata:
+  name: liveness-exec-check
+spec:
+  restartPolicy: OnFailure
+  containers:
+  - image: busybox:latest
+    name: health-check
+    args:
+    - /bin/sh
+    - -c
+    - touch /tmp/healthy; sleep 30; rm -rf /tmp/healthy; sleep 600
+    livenessProbe:
+      exec:
+        command:
+        - cat
+        - /tmp/healthy
+      initialDelaySeconds: 5
+      periodSeconds: 5
+```
+
+文件解析
+
+在原有创建Pod的基础上，增加livenessProbe的定义，指定类型为exec，并给清楚执行的命令，以及initialDelaySeconds（pod启动延迟多久进行一次探测）和periodSeconds（探测的周期）。
 
 
 ### 2.2.3 tcpSocket探测方式
 
 它是通过探测容器的IP和Port进行TCP健康检查，如果这个TCP的链接能够正常被建立，那么标识当前这个容器是健康的。
 
+*liveness-tcp-socket-check.yaml*
+```
+apiVersion: v1
+kind: Pod
+metadata:
+  name: kubia-manual
+spec:
+  containers:
+  - image: luksa/kubia:v1
+    name: kubia
+    ports:
+    - containerPort: 8080
+      protocol: TCP
+    livenessProbe:
+      tcpSocket:
+        port: 8080
+      initialDelaySeconds: 5
+      periodSeconds: 5
+```
+
+文件解析
+
+在原有创建Pod的基础上，增加livenessProbe的定义，指定类型为tcpSocket，并给清楚探测的端口，以及initialDelaySeconds（pod启动延迟多久进行一次探测）和periodSeconds（探测的周期）。
+
+## 2.3 探测结果
+
+从探测结果来讲主要分为三种：
+
+第一种是success，当状态是success的时候，表示container通过了健康检查，也就是Liveness probe是正常的一个状态；
+
+第二种是Failure，Failure表示的是这个container没有通过健康检查，如果没有通过健康检查的话，那么此时就会进行相应的一个处理，Liveness 就是将这个pod进行重新拉起，或者是删除。
+
+第三种状态是Unknown，Unknown是表示说当前的执行的机制没有进行完整的一个执行，可能是因为类似像超时或者像一些脚本没有及时返回，那么此时Liveness-probe 会不做任何的一个操作，会等待下一次的机制来进行检验。
+
+
+## 2.4 Liveness探测的其它选项字段
+
+successThreshold，它表示的是：当这个pod从探测失败到再一次判断探测成功，所需要的阈值次数，默认情况下是1次，表示原本是失败的，那接下来探测这一次成功了，就会认为这个pod是处在一个探针状态正常的一个状态；
+
+failureThreshold，它表示的是探测失败的重试次数，默认值是3，表示的是当从一个健康的状态连续探测3次失败，那此时会判断当前这个pod的状态处在一个失败的状态。
+
+注：可以通过--previous选项看查看崩溃容器的日志信息，即
+
+```
+sudo kubectl logs mypod --previous
+```
 
 # 3. Readiness探测
 
@@ -85,4 +183,4 @@ Liveness指针是存活指针，它用来判断容器是否存活、判断Pod是
 
 Readiness指针用来判断这个容器是否启动完成，即Pod的condition是否ready。如果探测的一个结果是不成功，那么此时它会从Endpoint上移除，也就是说从接入层上面会把该Pod 进行摘除，直到下一次判断成功，这个 Pod才会再次挂到相应的Endpoint之上。
 
-一句话，Liveness指针探测Pod是否正常存在，Readiness指针探测Pod是否能够正常提供服务。
+一句话，Liveness指针探测Pod是否正常存在，Readiness指针探测Pod是否能够正常提供服务，另外探测机制是由承载Pod的节点上的Kubelet执行的，与Master节点上的控制器没有关系。
