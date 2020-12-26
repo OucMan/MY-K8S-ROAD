@@ -76,6 +76,8 @@ K8s为Service分配的IP是一个虚拟IP，也就是说集群中不存在一个
 
 ![User space代理模式](https://github.com/OucMan/MY-K8S-ROAD/blob/main/pic/userspace-mode.png)
 
+注：Service定义文件中的spec.sessionAffinity字段默认为None，如果设定为 "ClientIP"，则同一个客户端的连接将始终被转发到同一个Pod。
+
 
 ## 3.2 Iptables代理模式（默认）
 
