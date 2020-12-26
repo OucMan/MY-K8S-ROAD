@@ -86,6 +86,8 @@ K8s为Service分配的IP是一个虚拟IP，也就是说集群中不存在一个
 * iptables将发送到Service的ClusterIP/Port的请求重定向到Service的后端Pod上
   - 对于Service中的每一个Endpoint，kube-proxy安装一个iptable规则
   - 默认情况下，随机选择一个Service的后端Pod
+  
+以上面提到的图像处理程序为例。当Service被创建时，master节点为其分配一个虚拟IP地址（假设是10.0.0.1），并假设Service的端口是1234。集群中所有的kube-proxy都实时监听者Service的创建和删除。Service创建后，kube-proxy设定了一系列的iptables规则（这些规则可将虚拟IP地址映射到per-Service的规则）。per-Service规则进一步链接到per-Endpoint规则，并最终将网络请求重定向（使用DNAT）到后端 Pod。当一个客户端连接到该Service的虚拟IP地址时，iptables的规则被触发。一个后端Pod将被选中（基于session affinity或者随机选择），且网络报文被重定向到该后端Pod。与userspace proxy不同，网络报文不再被复制到userspace，kube-proxy也无需处理这些报文，且报文被直接转发到后端Pod。
 
 ![Iptables代理模式](https://github.com/OucMan/MY-K8S-ROAD/blob/main/pic/iptable-mode.png)
 
