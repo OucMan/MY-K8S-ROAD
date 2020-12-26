@@ -94,6 +94,12 @@ K8s为Service分配的IP是一个虚拟IP，也就是说集群中不存在一个
 
 ## 3.3 IPVS代理模式
 
+工作流程：
+* kube-proxy监听master节点以获得添加和移除Service/Endpoint的事件
+* kube-proxy根据监听到的事件，调用netlink接口，创建IPVS规则；并且将Service/Endpoint的变化同步到IPVS规则中
+* 当访问一个Service时，IPVS将请求重定向到后端Pod
+
+IPVS proxy mode基于netfilter的hook功能，与iptables代理模式相似，但是在一个大型集群中（例如，存在10000个Service）iptables的操作将显著变慢。IPVS的设计是基于in-kernel hash table执行负载均衡。因此，使用IPVS的kube-proxy在Service数量较多的情况下仍然能够保持好的性能。同时，基于IPVS的kube-proxy可以使用更复杂的负载均衡算法（最少连接数、基于地址的、基于权重的等）。
 
 ![IPVS代理模式](https://github.com/OucMan/MY-K8S-ROAD/blob/main/pic/ipvs.png)
 
