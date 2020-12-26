@@ -52,7 +52,27 @@ spec:
 ```
 sudo kubectl create -f my-service.yaml
 ```
-创建Service后，K8s将为该Service分配一个IP地址（ClusterIP 或集群内 IP），K8s将不断扫描符合该selector的Pod，并将最新的结果更新到与Service同名my-service的Endpoint对象中。假如客户端想要请求Pod提供的服务，则只需要向对应的Service的IP和Port发起请求，Service从自己的IP地址和port端口接收请求，并将请求映射到符合条件的Pod的targetPort。Service的默认传输协议是TCP，也支持UDP，http，https等协议，因此可以在Service的spec.ports字段中定义多个端口，不同的端口可以使用相同或不同的传输协议。
+创建Service后，K8s将为该Service分配一个IP地址（ClusterIP 或集群内 IP），K8s将不断扫描符合该selector的Pod，并将最新的结果更新到与Service同名my-service的Endpoint对象中。假如客户端想要请求Pod提供的服务，则只需要向对应的Service的IP和Port发起请求，Service从自己的IP地址和port端口接收请求，并将请求映射到符合条件的Pod的targetPort。Service的默认传输协议是TCP，也支持UDP，http，https等协议，因此可以在Service的spec.ports字段中定义多个端口，不同的端口可以使用相同或不同的传输协议（这是必须为每个端口定义名字），如
+
+*my-service.yaml*
+```
+apiVersion: v1
+kind: Service
+metadata:
+  name: my-service
+spec:
+  selector:
+    app: MyApp
+  ports:
+    - name: http
+      protocol: TCP
+      port: 80
+      targetPort: 9376
+    - name: https
+      protocol: TCP
+      port: 443
+      targetPort: 9377   
+```
 
 # 3. kube-proxy
 
