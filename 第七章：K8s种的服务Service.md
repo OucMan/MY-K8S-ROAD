@@ -128,5 +128,6 @@ IPVS proxy mode基于netfilter的hook功能，与iptables代理模式相似，�
 
 # 4. Service的类型
 
+# 5. 服务发现
 
-# 5. Service演示
+# 6. Service演示
