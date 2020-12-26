@@ -84,8 +84,8 @@ K8s为Service分配的IP是一个虚拟IP，也就是说集群中不存在一个
 * kube-proxy监听master节点以获得添加和移除Service/Endpoint的事件
 * kube-proxy在其所在的节点（每个节点都有kube-proxy）上为每一个Service安装iptable规则
 * iptables将发送到Service的ClusterIP/Port的请求重定向到Service的后端Pod上
-** 对于Service中的每一个Endpoint，kube-proxy安装一个iptable规则
-** 默认情况下，随机选择一个Service的后端Pod
+  * 对于Service中的每一个Endpoint，kube-proxy安装一个iptable规则
+  * 默认情况下，随机选择一个Service的后端Pod
 
 ![Iptables代理模式](https://github.com/OucMan/MY-K8S-ROAD/blob/main/pic/iptable-mode.png)
 
