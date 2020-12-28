@@ -363,7 +363,28 @@ spec:
 
 # 7. Headless Service
 
+使用Service服务提供稳定的IP地址，从而允许客户端连接到支持服务的每个Pod，到服务的每个连接都被转发到一个随机选择的Pod上。假如客户端想要连接到所有的Pod呢？K8s中提供了一种无头服务Headless Service来解决这个需求，Headless Service没有Cluster Ip，通过DNS查询Headless Service的记录，返回的是所有Pod的IP地址，而不是和常规Service一样，返回Cluster Ip。
 
+要想创建Headless Service，只需要将spec.clusterIP设置为None，如
+```
+apiVersion: v1
+kind: Service
+metadata:
+  name: my-service
+spec:
+  selector:
+    app: MyApp
+  clusterIP: None
+  ports:
+  - protocol: TCP
+    port: 80
+    targetPort: 9376
+    nodePort: 90
+```
+
+尽管Headless服务看起来和常规服务不同，但是在客户角度它们并没有什么不同。即使使用Headless服务，客户也可以通过连接到服务的DNS名称来连接到Pod上，和常规服务一样。但是对于Headless服务，由于DNS返回了Pod的IP，客户端直接连接到该Pod，而不是通过kube-proxy。
+
+注：Headless服务仍然提供跨Pod的负载均衡，但是是通过DNS轮询机制而不是通过kube-proxy。
 
 # 8. Service演示
 
