@@ -388,5 +388,180 @@ spec:
 
 # 8. Service演示
 
+## 8.1 在集群中部署Pod
+
+*run-my-nginx.yaml*
+```
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: my-nginx
+spec:
+  selector:
+    matchLabels:
+      run: my-nginx
+  replicas: 2
+  template:
+    metadata:
+      labels:
+        run: my-nginx
+    spec:
+      containers:
+      - name: my-nginx
+        image: luksa/kubia:v1
+        ports:
+        - containerPort: 8080
+          protocol: TCP
+```
+我们使用Deployment部署副本数量等于2的Pod，Pod中的容器使用luksa/kubia:v1（即，nginx服务器上运行了一个简单的App，详情见第二章）。
+
+执行以下命令，部署Pod并检查运行情况：
+```
+master@k8s-master:~$ sudo kubectl apply -f run-my-nginx.yaml
+[sudo] password for master: 
+deployment.apps/my-nginx created
+master@k8s-master:~$ sudo kubectl get pods -l run=my-nginx -o wide
+NAME                       READY   STATUS    RESTARTS   AGE   IP            NODE        NOMINATED NODE   READINESS GATES
+my-nginx-96d4cc4cc-kzzt4   1/1     Running   0          26s   10.244.2.25   k8s-node2   <none>           <none>
+my-nginx-96d4cc4cc-ll48t   1/1     Running   0          26s   10.244.1.25   k8s-node1   <none>           <none>
+```
+接着在Master节点上利用Pod IP来请求nginx的响应，如下：
+```
+master@k8s-master:~$ curl 10.244.2.25:8080
+You've hit my-nginx-96d4cc4cc-kzzt4
+master@k8s-master:~$ curl 10.244.1.25:8080
+You've hit my-nginx-96d4cc4cc-ll48t
+```
+至此，利用Deployment部署Pod完成！
+
+## 8.2 创建Service
+
+根据上面的实验已经验证直接Pod IP可以直接访问nginx，但是假如某一个Pod终止，Deployment会重新拉起一个Pod，这是IP地址会发生变化，因此下面利用Service来解决IP地址动态变化的问题。
+
+*nginx-svc.yaml*
+```
+apiVersion: v1
+kind: Service
+metadata:
+  name: my-nginx
+  labels:
+    run: my-nginx
+spec:
+  ports:
+  - port: 80
+    targetPort: 8080
+    protocol: TCP
+  selector:
+    run: my-nginx
+```
+该yaml文件将创建一个Service：
+* 通过label selector选取包含run: my-nginx标签的Pod作为后端Pod
+* 该Service暴露一个端口80
+* 该Service将80端口上接收到的网络请求转发到后端Pod的8080（targetPort）端口上，支持负载均衡
+
+使用下面命令来创建Service，并查看Service状态
+```
+master@k8s-master:~$ sudo kubectl apply -f nginx-svc.yaml
+[sudo] password for master: 
+service/my-nginx created
+master@k8s-master:~$ sudo kubectl get svc my-nginx
+NAME       TYPE        CLUSTER-IP      EXTERNAL-IP   PORT(S)   AGE
+my-nginx   ClusterIP   10.106.223.82   <none>        80/TCP    21s
+```
+我们没有指定Service的类型，默认是Cluster IP，K8s为该Service分配了一个Cluster IP：10.106.223.82。
+
+Service的后端Pod实际上通过Endpoints来暴露。K8s会持续检查Service的标签选择器，并将符合条件的Pod更新到与Service同名（my-nginx）的Endpoints对象。如果Pod终止了，该Pod将被自动从Endpoints中移除，新建的Pod将自动被添加到该Endpoint，执行下面的命令来看一下该Service中的Endpoints中的IP地址与上面获得的Pod地址是否相同。
+```
+master@k8s-master:~$ sudo kubectl describe svc my-nginx
+Name:              my-nginx
+Namespace:         default
+Labels:            run=my-nginx
+Annotations:       <none>
+Selector:          run=my-nginx
+Type:              ClusterIP
+IP Families:       <none>
+IP:                10.106.223.82
+IPs:               10.106.223.82
+Port:              <unset>  80/TCP
+TargetPort:        8080/TCP
+Endpoints:         10.244.1.25:8080,10.244.2.25:8080
+Session Affinity:  None
+Events:            <none>
+```
+也可以直接查看Endpoint资源
+```
+master@k8s-master:~$ sudo kubectl get ep my-nginx
+NAME       ENDPOINTS                           AGE
+my-nginx   10.244.1.25:8080,10.244.2.25:8080   6m12s
+```
+可以看到，Service已经创建成功，并且和后端的两个Pod绑定起来。
+
+然后，我们在Master节点上利用Service的Cluster IP:port来访问Pod
+```
+master@k8s-master:~$ curl 10.106.223.82:80
+You've hit my-nginx-96d4cc4cc-kzzt4
+master@k8s-master:~$ curl 10.106.223.82:80
+You've hit my-nginx-96d4cc4cc-ll48t
+```
+随机选择后端的Pod，酷炫！！！
+
+## 8.3 Service发现
+
+K8s支持两种方式发现服务：环境变量和DNS。
+
+### 8.3.1 环境变量
+
+针对每一个有效的Service，kubelet在创建Pod时，向Pod添加一组环境变量，我们进入一个Pod中查看里面的环境变量
+```
+master@k8s-master:~$ sudo kubectl exec my-nginx-96d4cc4cc-kzzt4 -- printenv | grep SERVICE
+KUBERNETES_SERVICE_HOST=10.96.0.1
+KUBERNETES_SERVICE_PORT=443
+KUBERNETES_SERVICE_PORT_HTTPS=443
+```
+可以看到其中并没有与my-nginx Service相关的环境变量，这是因为我们先创建了Pod的副本，后创建了Service，导致my-nginx Service相关的环境变量没有被注入进去。我们删除已有的两个Pod，Deployment将重新创建Pod以替代被删除的Pod。此时因为在创建Pod时，Service已经存在，所以可以在新的Pod中查看到Service的环境变量被正确设置，详情如下：
+```
+master@k8s-master:~$ sudo kubectl delete pods -l run=my-nginx
+pod "my-nginx-96d4cc4cc-kzzt4" deleted
+pod "my-nginx-96d4cc4cc-ll48t" deleted
+master@k8s-master:~$ sudo kubectl get pods -l run=my-nginx -o wide
+NAME                       READY   STATUS    RESTARTS   AGE   IP            NODE        NOMINATED NODE   READINESS GATES
+my-nginx-96d4cc4cc-28gpr   1/1     Running   0          75s   10.244.1.26   k8s-node1   <none>           <none>
+my-nginx-96d4cc4cc-lsj9s   1/1     Running   0          75s   10.244.2.26   k8s-node2   <none>           <none>
+master@k8s-master:~$ sudo kubectl exec my-nginx-96d4cc4cc-28gpr -- printenv | grep SERVICE
+KUBERNETES_SERVICE_PORT_HTTPS=443
+MY_NGINX_SERVICE_HOST=10.106.223.82
+MY_NGINX_SERVICE_PORT=80
+KUBERNETES_SERVICE_HOST=10.96.0.1
+KUBERNETES_SERVICE_PORT=443
+```
+可以看到my-nginx Service相关的环境变量已经被正确注入。
+
+### 8.3.2 DNS
+
+K8s提供了一个DNS cluster addon，即core DNS，可自动为Service分配DNS name。与环境变量方式不同（Pod与Service的启动顺序有关），集群中任何Pod中按Service的名称访问该Service。
+
+首先创建busyboxplus容器的命令行终端
+```
+master@k8s-master:~$ sudo kubectl run curl --image=radial/busyboxplus:curl -i --tty
+If you don't see a command prompt, try pressing enter.
+[ root@curl:/ ]$ 
+```
+然后执行命令 nslookup my-nginx，以及curl my-nginx:80，结果表明可获得Nginx的响应，最后exit退出容器。
+```
+[ root@curl:/ ]$ nslookup my-nginx
+Server:    10.96.0.10
+Address 1: 10.96.0.10 kube-dns.kube-system.svc.cluster.local
+
+Name:      my-nginx
+Address 1: 10.106.223.82 my-nginx.default.svc.cluster.local
+[ root@curl:/ ]$ curl my-nginx:80
+You've hit my-nginx-96d4cc4cc-lsj9s
+[ root@curl:/ ]$ exit
+Session ended, resume using 'kubectl attach curl -c curl -i -t' command when the pod is running
+```
+删除刚刚创建的curl测试Pod
+```
+sudo kubectl delete pod curl
+```
 
 # 9. Ingress演示
