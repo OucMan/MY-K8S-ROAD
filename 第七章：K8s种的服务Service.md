@@ -292,7 +292,7 @@ Ingress Controller有多种实现可供选择，比较常用的有Traefic、 Ngi
 ## 6.4 创建Ingress
 
 ### 6.4.1 使用Ingress暴露一个服务
-
+```
 apiVersion: networking.k8s.io/v1beta1
 kind: Ingress
 metadata:
@@ -306,7 +306,7 @@ spec:
         backend:
           serviceName: nginx-service  # 指定后端的Service为之前创建的nginx-service
           servicePort: 80
-
+```
 ### 6.4.2 相同的Ingress暴露多个服务
 
 rules和paths都是数组，因此可以包含多个条目，一个Ingress可以将多个主机和路径映射到多个服务。
