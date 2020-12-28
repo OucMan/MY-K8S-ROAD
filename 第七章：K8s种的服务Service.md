@@ -564,4 +564,47 @@ Session ended, resume using 'kubectl attach curl -c curl -i -t' command when the
 sudo kubectl delete pod curl
 ```
 
+## 8.4 暴露Service
+
+上述创建的Service类型是Cluster IP，也就是只能被集群内部的客户端访问。想要将Service暴露到外部的网络，K8s提供了NodePort、LoadBalancer、Ingress方式，其中LoadBalancer需要云环境支持，本文不做过多阐述。我们首先演示NodePort，然后后续再演示Ingress方式。
+
+首先删除上面创建的my-nginx Service
+```
+master@k8s-master:~$ sudo kubectl delete svc my-nginx
+service "my-nginx" deleted
+master@k8s-master:~$ sudo kubectl get svc my-nginx
+Error from server (NotFound): services "my-nginx" not found
+```
+然后创建NodePort类型的Service
+
+*nginx-svc-nodeport.yaml*
+```
+apiVersion: v1
+kind: Service
+metadata:
+  name: my-nginx-nodeport
+  labels:
+    run: my-nginx-nodeport
+spec:
+  type: NodePort
+  ports:
+  - port: 80
+    targetPort: 8080
+    nodePort: 30123
+    protocol: TCP
+  selector:
+    run: my-nginx
+```
+spec.type设置为NodePort，nodePort设置为30123，接下来创建Service
+
+```
+master@k8s-master:~$ sudo kubectl apply -f nginx-svc-nodeport.yaml 
+service/my-nginx-nodeport created
+master@k8s-master:~/k8s-learning/resources/service$ sudo kubectl get svc my-nginx-nodeport
+NAME                TYPE       CLUSTER-IP    EXTERNAL-IP   PORT(S)        AGE
+my-nginx-nodeport   NodePort   10.97.95.66   <none>        80:30123/TCP   28s
+```
+
+接下来我们在宿主机（Windows 7）的浏览器上使用访问虚拟机IP:30123，比如10.10.10.148:30123，查看结果，得到响应You've hit my-nginx-96d4cc4cc-lsj9s，同理使用其他集群节点的IP地址访问也都可以得到Pod的响应。这就证明NodePort Service奏效了。
+
 # 9. Ingress演示
