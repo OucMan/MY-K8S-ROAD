@@ -268,6 +268,7 @@ Ingress Controller有多种实现可供选择，比较常用的有Traefic、 Ngi
 
 客户端首先对URL（如kubia.example.com）进行DNS查询，DNS服务器（或本地操作系统）返回了Ingress控制器的IP。客户端然后向Ingress控制器发送HTTP请求，并在Host头中指定URL，如kubia.example.com。Ingress控制器确定客户端尝试访问哪个服务，通过与该服务关联的Endpoint对象查看pod IP，并利用kube-proxy将客户端请求转发给其中一个Pod。
 
+![Ingress](https://github.com/OucMan/MY-K8S-ROAD/blob/main/pic/Ingress.png)
 
 ## 6.3 外网连接到Ingress控制器
 
@@ -280,6 +281,7 @@ Ingress Controller有多种实现可供选择，比较常用的有Traefic、 Ngi
 * 将在Ingress中使用到的域名（假设是a.demo.kuboard.cn）解析到该外网IP地址Z.Z.Z.Z
 * 设置合理的安全组规则（开放该外网IP地址80/443端口的入方向访问）
 
+![单节点](https://github.com/OucMan/MY-K8S-ROAD/blob/main/pic/single-node.png)
 
 ### 6.3.2 外部负载均衡器
 
@@ -288,6 +290,7 @@ Ingress Controller有多种实现可供选择，比较常用的有Traefic、 Ngi
 * 将负载均衡器在80/443端口上监听到的TCP请求转发到K8s集群中所有（或某些）worker节点的80/443端口，可开启按源IP地址的会话保持
 * 将在Ingress中使用到的域名（假设是a.demo.kuboard.cn）解析到该负载均衡器的外网IP地址Z.Z.Z.Z
 
+![负载均衡器](https://github.com/OucMan/MY-K8S-ROAD/blob/main/pic/balancer.png)
 
 ## 6.4 创建Ingress
 
