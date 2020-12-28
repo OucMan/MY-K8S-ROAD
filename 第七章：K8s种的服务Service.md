@@ -128,6 +128,69 @@ IPVS proxy mode基于netfilter的hook功能，与iptables代理模式相似，�
 
 # 4. Service的类型
 
+Kubernetes Service支持的不同访问方式，这是通过spec.ServiceType字段指定，该字段的默认值是ClusterIP，其它可选值还包括：NodePort、LoadBalancer以及ExternalName。
+
+## 4.1 ClusterIP
+
+默认值，K8s为服务分配一个集群内部的IP地址，因此它只能被集群中的Pod访问，访问方式为ClusterIP:Port
+
+## 4.2 NodePort
+
+通过每一个节点上的的静态端口（NodePort）暴露Service（对于同一 Service，在每个节点上的节点端口都相同），NodePort的范围在初始化apiserver时可通过参数 --service-node-port-range 指定（默认是：30000-32767）。在创建Service时将使用该节点端口，如果该端口已被占用，则创建Service将不能成功。节点将该端口上的网络请求转发到对应的Service上。同时自动创建ClusterIP类型的访问方式，因此在集群内部通过ClusterIP:Port访问，在集群外部通过NodeIP:NodePort访问。
+
+*my-service.yaml*
+```
+apiVersion: v1
+kind: Service
+metadata:
+  name: my-service
+spec:
+  selector:
+    app: MyApp
+  type: NodePort
+  ports:
+  - protocol: TCP
+    port: 80
+    targetPort: 9376
+    nodePort: 90
+```
+
+注：
+* nodePort是节点上监听的端口。
+* port是ClusterIP上监听的端口。
+* targetPort是Pod监听的端口。
+
+Node和ClusterIP在各自端口上接收到的请求都会通过iptables转发到Pod的targetPort。nodePort不是请执行的，如果忽略它，K8s将选择一个随机的端口。还有个事就是，接收到客户端请求的节点与提供服务的Pod所在的节点有可能不是一个，这里使用的重定向机制还是利用Iptables实现的。
+
+## 4.3 LoadBalancer
+
+在支持外部负载均衡器的云环境中（例如 GCE、AWS、Azure 等），将.spec.type字段设置为LoadBalancer，Kubernetes将为该Service自动创建一个负载均衡器。负载均衡器的创建操作异步完成，可能要稍等片刻才能真正完成创建，负载均衡器的信息将被回写到Service的.status.loadBalancer字段。
+
+*my-service.yaml*
+```
+apiVersion: v1
+kind: Service
+metadata:
+  name: my-service
+spec:
+  selector:
+    app: MyApp
+  type: LoadBalancer
+  ports:
+  - port: 80
+    targetPort: 9376
+```
+
+负载均衡器拥有自己独一无二的可公开访问的IP地址，并将所有连接重定向到服务。LoadBalancer类型的服务本质上是一个具有额外的基础设施提供的负载均衡器NodePort服务，因此除创建负载均群器外，集群内部的节点也会被分配一个节点端口，就像NodePort服务一样。
+
+注意：接收外部连接的节点可能和最终提供服务的Pod所在的节点不是一个，这就有可能引起不必要的网络跳数，可以通过设置服务spec的externalTrafficPolicy字段为Local仅将外部通信重定向到接收连接的节点上运行的pod来阻止额外跳数。但是如果接收连接的节点没有本地Pod，那么连接将挂起（不会像不使用该设置意向，将其转发到随机的全局Pod），因此需要确保负载均衡器将连接转发到至少具有一个Pod的节点。
+
+
+## 4.4 ExternalName
+
+
+## 4.5 Eernal 
+
 # 5. 服务发现
 
 集群中的Pod如何知道当前集群中存在哪些Service？Kubernetes支持两种主要的服务发现模式：环境变量和DNS。
