@@ -130,4 +130,31 @@ IPVS proxy mode基于netfilter的hook功能，与iptables代理模式相似，�
 
 # 5. 服务发现
 
+集群中的Pod如何知道当前集群中存在哪些Service？Kubernetes支持两种主要的服务发现模式：环境变量和DNS。
+
+## 5.1 环境变量
+
+kubelet查找有效的Service，并针对每一个Service，向其所在节点上的Pod注入一组环境变量。如果要在Pod中使用基于环境变量的服务发现方式，必须先创建Service，再创建调用Service的Pod。否则，Pod中不会有该Service对应的环境变量。如果使用基于DNS的服务发现，您无需担心这个创建顺序的问题。
+
+## 5.2 DNS
+
+当我们配置完K8s集群环境时，就已经将DNS服务安全，如下图：
+```
+master@k8s-master:~$ sudo kubectl get pods --all-namespaces
+NAMESPACE     NAME                                 READY   STATUS    RESTARTS   AGE
+kube-system   coredns-74ff55c5b-cq7hh              1/1     Running   0          11d
+kube-system   coredns-74ff55c5b-wx4nf              1/1     Running   0          11d
+...
+```
+
+CoreDNS监听Kubernetes API上创建和删除Service的事件，并为每一个Service创建一条DNS记录。集群中所有的Pod都可以使用DNS Name解析到Service的IP地址。
+
+例如，名称空间my-ns中的Service my-service，将对应一条DNS记录my-service.my-ns。 名称空间my-ns中的Pod可以直接nslookup my-service（my-service.my-ns也可以）。其他名称空间的Pod必须使用my-service.my-ns。my-service和my-service.my-ns都将被解析到Service的Cluster IP。
+
+Kubernetes同样支持DNS SRV（Service）记录，用于查找一个命名的端口。假设my-service.my-ns Service有一个TCP端口名为http，则可以
+```
+nslookup _http__tcp_my-service.my-ns
+```
+以发现该Service的IP地址及端口http。
+
 # 6. Service演示
