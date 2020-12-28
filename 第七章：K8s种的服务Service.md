@@ -257,6 +257,112 @@ nslookup _http__tcp_my-service.my-ns
 
 # 6. 利用Ingress暴露服务
 
+## 6.1 Ingress概述
+
+根据上面的描述，将Service暴露给集群外部的客户端有两种方法：NodePort和LoadBalancer，这两种方法都是在四层运输层上进行操作，还有一种利用Ingress暴露服务的方式，它将集群内部的 Service 通过HTTP/HTTPS方式暴露到集群外部，并通过规则定义HTTP/HTTPS的路由，因此Ingress是在七层应用层进行操作的，可以提供一下诸如cookie的会话亲和性等功能。具体地，Ingress作为Kubernetes的一种API对象，其中定义了URL路径和服务之间的关系，Ingress Controller监听节点上的特定端点，用来发现HTTP/HTTPS连接，并根据URL中的主机名和路径来解析出对应的服务，接着通过kube-proxy将请求转发到Service对应的任意一个Pod上。由此可见，Ingress只是Kubernetes中的一种配置信息，Ingress Controller才是监听端口，并根据Ingress上配置的路由信息执行HTTP路由转发的组件，因此必须先在K8s集群中安装了Ingress Controller，配置的Ingress才能生效。
+
+Ingress Controller有多种实现可供选择，比较常用的有Traefic、 Nginx Ingress Controller for Kubernetes等，后面会实践安装 Nginx Ingress Controller。Ingress Controller的部署是DaemonSet，记在集群中的每一个节点都一个运行Ingress Controller的Pod。
+
+
+## 6.2 利用Ingress访问Service流程
+
+客户端首先对URL（如kubia.example.com）进行DNS查询，DNS服务器（或本地操作系统）返回了Ingress控制器的IP。客户端然后向Ingress控制器发送HTTP请求，并在Host头中指定URL，如kubia.example.com。Ingress控制器确定客户端尝试访问哪个服务，通过与该服务关联的Endpoint对象查看pod IP，并利用kube-proxy将客户端请求转发给其中一个Pod。
+
+
+## 6.3 外网连接到Ingress控制器
+
+想要利用Ingress，需要将URL映射到Ingress控制器IP，每一个集群节点都有一个Ingress控制器，因此要将URL映射到哪一个Ingress控制器IP？这里有两种常见的方案：暴露单worker节点和外部负载均衡器。
+
+### 6.3.1 暴露单worker节点
+
+步骤如下：
+* 为K8s集群中的某一个worker节点配置外网IP地址Z.Z.Z.Z
+* 将在Ingress中使用到的域名（假设是a.demo.kuboard.cn）解析到该外网IP地址Z.Z.Z.Z
+* 设置合理的安全组规则（开放该外网IP地址80/443端口的入方向访问）
+
+
+### 6.3.2 外部负载均衡器
+
+步骤如下：
+* 创建一个集群外部的负载均衡器，该负载均衡器拥有一个外网IP地址Z.Z.Z.Z，并监听80/443端口的TCP协议
+* 将负载均衡器在80/443端口上监听到的TCP请求转发到K8s集群中所有（或某些）worker节点的80/443端口，可开启按源IP地址的会话保持
+* 将在Ingress中使用到的域名（假设是a.demo.kuboard.cn）解析到该负载均衡器的外网IP地址Z.Z.Z.Z
+
+
+## 6.4 创建Ingress
+
+### 6.4.1 使用Ingress暴露一个服务
+
+apiVersion: networking.k8s.io/v1beta1
+kind: Ingress
+metadata:
+  name: kubia  # Ingress的名字，仅用于标识
+spec:
+  rules:                      # Ingress 中定义L7路由规则
+  - host: kubia.example.com   # 根据 virtual hostname进行路由
+    http:
+      paths:                  # 按路径进行路由
+      - path: /
+        backend:
+          serviceName: nginx-service  # 指定后端的Service为之前创建的nginx-service
+          servicePort: 80
+
+### 6.4.2 相同的Ingress暴露多个服务
+
+rules和paths都是数组，因此可以包含多个条目，一个Ingress可以将多个主机和路径映射到多个服务。
+
+*使用同一主机、不同路径，暴露多个服务*
+
+```
+apiVersion: networking.k8s.io/v1beta1
+kind: Ingress
+metadata:
+  name: kubia
+spec:
+  rules:
+  - host: kubia.example.com
+    http:
+      paths:
+      - path: /kubia
+        backend:
+          serviceName: kubia
+          servicePort: 80
+      - path: /foo
+        backend:
+          serviceName: bar
+          servicePort: 80
+```
+
+*将不同的服务映射到不同的主机上*
+
+```
+apiVersion: networking.k8s.io/v1beta1
+kind: Ingress
+metadata:
+  name: kubia
+spec:
+  rules:
+  - host: foo.example.com
+    http:
+      paths:
+      - path: /
+        backend:
+          serviceName: kubia
+          servicePort: 80
+  - host: bar.example.com
+    http:
+      paths:
+      - path: /
+        backend:
+          serviceName: bar
+          servicePort: 80
+```
+
 # 7. Headless Service
 
+
+
 # 8. Service演示
+
+
+# 9. Ingress演示
