@@ -185,11 +185,41 @@ spec:
 
 注意：接收外部连接的节点可能和最终提供服务的Pod所在的节点不是一个，这就有可能引起不必要的网络跳数，可以通过设置服务spec的externalTrafficPolicy字段为Local仅将外部通信重定向到接收连接的节点上运行的pod来阻止额外跳数。但是如果接收连接的节点没有本地Pod，那么连接将挂起（不会像不使用该设置意向，将其转发到随机的全局Pod），因此需要确保负载均衡器将连接转发到至少具有一个Pod的节点。
 
-
 ## 4.4 ExternalName
 
+ExternalName类型的Service映射到一个外部的DNS name，而不是一个pod label selector。可通过spec.externalName字段指定外部DNS name。下面的例子中，Service my-service将映射到 someapi.somecompany.com：
+```
+apiVersion: v1
+kind: Service
+metadata:
+  name: my-service
+spec:
+  type: ExternalName
+  externalName: someapi.somecompany.com
+```
 
-## 4.5 Eernal 
+服务创建完成后，Pod可以通过my-service.default.svc.cluster.local域名（甚至my-service）连接到外部服务。ExternalName类型的Service仅在DNS级别实施——为服务创建简单的CNAME DNS记录。因此，连接到服务的客户端将直接连接到外部服务，完全绕过服务代理。
+
+
+## 4.5 External IP
+
+如果有外部可以通过IP路由到Kubernetes集群的一个或多个节点，Kubernetes Service可以通过这些external IPs进行访问。externalIP需要由集群管理员在K8s之外配置。在Service的定义中，ExternalIPs可以和任何类型的.spec.type一通使用。在下面的例子中，客户端可通过80.11.12.10:80（externalIP:port）访问my-service。
+```
+apiVersion: v1
+kind: Service
+metadata:
+  name: my-service
+spec:
+  selector:
+    app: MyApp
+  ports:
+    - name: http
+      protocol: TCP
+      port: 80
+      targetPort: 9376
+  externalIPs:
+    - 80.11.12.10
+```
 
 # 5. 服务发现
 
@@ -220,4 +250,8 @@ nslookup _http__tcp_my-service.my-ns
 ```
 以发现该Service的IP地址及端口http。
 
-# 6. Service演示
+# 6. 利用Ingress暴露服务
+
+# 7. Headless Service
+
+# 8. Service演示
