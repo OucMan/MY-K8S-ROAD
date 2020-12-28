@@ -162,6 +162,9 @@ spec:
 
 Node和ClusterIP在各自端口上接收到的请求都会通过iptables转发到Pod的targetPort。nodePort不是请执行的，如果忽略它，K8s将选择一个随机的端口。还有个事就是，接收到客户端请求的节点与提供服务的Pod所在的节点有可能不是一个，这里使用的重定向机制还是利用Iptables实现的。
 
+![NodePort](https://github.com/OucMan/MY-K8S-ROAD/blob/main/pic/nodePort.png)
+
+
 ## 4.3 LoadBalancer
 
 在支持外部负载均衡器的云环境中（例如 GCE、AWS、Azure 等），将.spec.type字段设置为LoadBalancer，Kubernetes将为该Service自动创建一个负载均衡器。负载均衡器的创建操作异步完成，可能要稍等片刻才能真正完成创建，负载均衡器的信息将被回写到Service的.status.loadBalancer字段。
@@ -182,6 +185,8 @@ spec:
 ```
 
 负载均衡器拥有自己独一无二的可公开访问的IP地址，并将所有连接重定向到服务。LoadBalancer类型的服务本质上是一个具有额外的基础设施提供的负载均衡器NodePort服务，因此除创建负载均群器外，集群内部的节点也会被分配一个节点端口，就像NodePort服务一样。
+
+![LoadBalancer](https://github.com/OucMan/MY-K8S-ROAD/blob/main/pic/LoadBalancer.png)
 
 注意：接收外部连接的节点可能和最终提供服务的Pod所在的节点不是一个，这就有可能引起不必要的网络跳数，可以通过设置服务spec的externalTrafficPolicy字段为Local仅将外部通信重定向到接收连接的节点上运行的pod来阻止额外跳数。但是如果接收连接的节点没有本地Pod，那么连接将挂起（不会像不使用该设置意向，将其转发到随机的全局Pod），因此需要确保负载均衡器将连接转发到至少具有一个Pod的节点。
 
