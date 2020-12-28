@@ -608,3 +608,135 @@ my-nginx-nodeport   NodePort   10.97.95.66   <none>        80:30123/TCP   28s
 接下来我们在宿主机（Windows 7）的浏览器上使用访问虚拟机IP:30123，比如10.10.10.148:30123，查看结果，得到响应You've hit my-nginx-96d4cc4cc-lsj9s，同理使用其他集群节点的IP地址访问也都可以得到Pod的响应。这就证明NodePort Service奏效了。
 
 # 9. Ingress演示
+
+## 9.1 获得nginx-ingress controller yaml文件
+下载地址如下
+```
+https://kuboard.cn/install-script/v1.20.x/nginx-ingress.yaml
+```
+传输到Master节点下
+
+## 9.2 安装nginx-ingress controller
+```
+master@k8s-master:~$ sudo kubectl apply -f nginx-ingress.yaml 
+namespace/nginx-ingress created
+serviceaccount/nginx-ingress created
+secret/default-server-secret created
+configmap/nginx-config created
+clusterrole.rbac.authorization.k8s.io/nginx-ingress created
+clusterrolebinding.rbac.authorization.k8s.io/nginx-ingress created
+daemonset.apps/nginx-ingress created
+```
+创建命名空间nginx-ingress，创建的组件都放到这个命名空间中。
+
+serviceaccount、secret、configmap等资源我们后续章节会介绍。
+
+nginx-ingress controller是使用DaemonSet控制器来创建的，因此会在每一个worker节点上创建一个nginx-ingress controller Pod。
+
+查看对应的Pod是否创建成功
+
+```
+master@k8s-master:~$ sudo kubectl get pods -n nginx-ingress
+NAME                  READY   STATUS    RESTARTS   AGE
+nginx-ingress-2f2n2   1/1     Running   0          8m48s
+nginx-ingress-92jsp   1/1     Running   0          8m48s
+```
+没有问题，至此nginx-ingress controller安装完毕！
+
+## 9.3 安装Deployment、Service和Ingress
+
+**Deployment**
+
+*run-my-nginx.yaml*
+```
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: my-nginx
+spec:
+  selector:
+    matchLabels:
+      run: my-nginx
+  replicas: 2
+  template:
+    metadata:
+      labels:
+        run: my-nginx
+    spec:
+      containers:
+      - name: my-nginx
+        image: luksa/kubia:v1
+        ports:
+        - containerPort: 8080
+          protocol: TCP
+```
+
+**Service**
+
+*nginx-svc-nodeport.yaml*
+```
+apiVersion: v1
+kind: Service
+metadata:
+  name: my-nginx-nodeport
+  labels:
+    run: my-nginx-nodeport
+spec:
+  type: NodePort
+  ports:
+  - port: 80
+    targetPort: 8080
+    nodePort: 30123
+    protocol: TCP
+  selector:
+    run: my-nginx
+```
+
+**Ingress**
+
+*nginx-ingress.yaml*
+```
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: my-ingress-for-nginx  # Ingress 的名字，仅用于标识
+spec:
+  rules:                      # Ingress 中定义 L7 路由规则
+  - host: xxx.k8s.example.cn   # 根据 virtual hostname 进行路由（请使用您自己的域名）
+    http:
+      paths:                  # 按路径进行路由
+      - path: /
+        backend:
+          serviceName: my-nginx-nodeport  # 指定后端的Service为之前创建的my-nginx-nodeport
+          servicePort: 80
+```
+
+执行命令
+
+```
+sudo kubectl apply -f run-my-nginx.yaml
+sudo kubectl apply -f nginx-svc-nodeport.yaml
+sudo kubectl apply -f nginx-ingress.yaml
+```
+查看Ingress
+```
+master@k8s-master:~$ sudo kubectl get ingress -o wide
+NAME                   CLASS    HOSTS               ADDRESS   PORTS   AGE
+my-ingress-for-nginx   <none>   a.demo.kuboard.cn             80      6m48s
+```
+
+## 9.4 配置DNS
+
+本实例采用暴露单worker节点的方式来使外部机器访问集群内服务，我们将k8s-node1的IP地址10.10.10.148暴露给外网。我们使用宿主机来代表集群外的机器，我们的宿主机是win7，因此在C:\Windows\System32\drivers\etc\HOST文件中增加如下一行：
+```
+10.10.10.148 a.demo.kuboard.cn
+```
+保存退出，然后后宿主机的浏览器上访问http://a.demo.kuboard.cn/
+
+查看结果，结果为得到集群中Pod的响应，如下图所示：
+
+![结果1](https://github.com/OucMan/MY-K8S-ROAD/blob/main/pic/ingress-res1.png)
+
+![结果2](https://github.com/OucMan/MY-K8S-ROAD/blob/main/pic/ingress-res2.png)
+
+至此，完成利用Ingress访问Service！！！
