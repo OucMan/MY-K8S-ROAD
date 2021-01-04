@@ -71,7 +71,115 @@ hostPath Volume的作用是将Docker Host文件系统中已经存在的目录mou
 
 如果Pod被销毁了，hostPath对应的目录还是会被保留，从这一点来看，hostPath的持久性比emptyDir强。不过一旦Host崩溃，hostPath也就无法访问了。
 
-## 2.3 persistentVolumeClaim
+## 2.3 PersistentVolumeClaim
+
+这是本章的重点内容。。。
+
+### 2.3.1 存储卷PersistentVolume
+
+首先介绍一下PV（PersistentVolume）出现的背景（可解决什么问题）：pod重建销毁，如用Deployment管理的pod，在做镜像升级的过程中，会产生新的pod并且删除旧的pod ，那新旧pod之间如何复用数据？多个pod之间，如果想要共享数据，应该如何去声明呢？同一个pod中多个容器想共享数据，可以借助Pod Volumes来解决；当多个pod想共享数据时，Pod Volumes就很难去表达这种语义；
+
+为解决上述问题，K8s中又引入了PV，它可以将存储和计算分离，通过不同的组件来管理存储资源和计算资源，然后解耦pod和Volume之间生命周期的关联。这样，当把pod删除之后，它使用的PV仍然存在，还可以被新建的pod复用。
+
+PV存储卷是集群中的一块存储空间，由集群管理员管理、或者由Storage Class（存储类）自动管理。PV和node一样，是集群中的资源（K8s集群由存储资源和计算资源组成）。
+
+### 2.3.2 存储卷声明PersistentVolumeClaim
+
+PersistentVolumeClaim（PVC存储卷声明）代表用户使用存储的请求。Pod容器组消耗node计算资源，PVC存储卷声明消耗PersistentVolume存储资源。Pod容器组可以请求特定数量的计算资源（CPU/内存）；PVC可以请求特定大小/特定访问模式（只能被单节点读写/可被多节点只读/可被多节点读写）的存储资源。
+
+这里PV和PVS职责分离，PVC中只需用自己需要的存储size、access mode(单node独占还是多node共享？只读还是读写访问？)等业务真正关心的存储需求(不用关心存储实现细节)，PV和其后端的存储信息则由交给cluster admin统一运维和管控，安全访问策略更容易控制。两者通过kube-controller-manager中的Persisent中的PersisentVolumeController将PVC与合适的PV bound到一起，从而满足User对存储的实际需求。
+
+### 2.3.3 PVC和PV之间的关系
+
+PV可以看作可用的存储资源，PVC则是对存储资源的需求，两者关系如下：
+
+* PV是集群中的存储资源，通常由集群管理员创建和管理
+* PVC是使用存储资源的请求，通常由应用程序提出请求，并指定对应的访问策略以及需求的空间大小（或者StorageClass和需求的空间大小）
+* PVC可以做为数据卷的一种，被挂载到Pod中使用
+
+总结，PVC是用户对存储的需求，PV是真正存储的实现，Pod中通过挂载PVC来使用具体的PV，PVC与PV的绑定过程由K8s中的PersisentVolumeController实现。
+
+搞清楚PV和PVC的关系，下面来看一下PV是如何创建的，PVC是如何与PV绑定的，解除绑定后PV又是怎么回收的等等问题。
+
+### 2.3.4 PV与PVC的生命周期
+
+首先Pv和PVC的生命周期与Pod的生命周期是相互独立的。
+
+#### 2.3.4.1 资源供应（Provisioning）
+
+K8s中有两种方式为PVC提供PV: 静态、动态。资源供应的结果就是创建好的PV。
+
+*静态*
+
+由集群管理员事先去规划这个集群中的用户会怎样使用存储，它会先预分配一些存储，也就是预先创建一些PV；然后用户在提交自己的存储需求（也就是PVC）的时候，K8s内部相关组件会帮助它把PVC和PV做绑定；之后用户再通过pod去使用存储的时候，就可以通过PVC找到相应的PV，它就可以使用了。
+
+以使用阿里云存储静态创建PV为例，集群管理员首先通过阿里云文件存储控制台，创建NAS文件系统和挂载点，然后将将NAS文件系统大小，挂载点，以及PV的access mode,reclaim policy等信息添加到创建PV对象的yaml文件中，如下
+```
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: nas-csi-pv
+spec:
+  capacity:
+    storage:  5Gi # 该volume的总容量大小
+  accessModes:
+  - ReadWriteMany  # 该volume可以被多个node上的pod挂载使用而且都具有读写特权
+  persistentVolumeReclaimPolicy: Retain # 该volume使用后被release之后的回收策略
+  csi:
+    driver: nasplugin.csi.alibabacloud.com # 指定由什么volume plugin来挂载该volume(需要提前在node上部署)
+    volumeHandle: data-id
+    volumeAttributes:
+      host: "***.cn-beijing.nas.aliyuncs.com"
+      path: "/k8s"
+      vers: "4.0"
+```
+
+接下来，User创建PVC声明存储需求，根据访问策略和所需空间大小，PersistentVolumeController会将PVC与PV绑定在一起。
+
+```
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata: 
+  name: nas-pvc
+spec:
+  accessModes:
+  - ReadWriteMany
+  resources:
+    request:
+      storage: 5Gi
+```
+
+最后创建Pod挂载该PVC
+
+```
+apiVersion: v1
+kind: Pod
+metadata:
+  name: producer
+spec:
+  containers:
+  - name:
+    image: nginx
+    ports:
+    - containersPort: 80
+    volumeMounts:
+    - name: nas-pvc
+      mountPath: /data
+  volumes:
+  - name: nas-pvc
+    persistentVolumeClaim:
+      claimName: nas-pvc
+```
+
+
+
+*动态*
+```
+```
+
+
+
+
 
 
 
