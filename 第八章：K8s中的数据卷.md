@@ -109,7 +109,7 @@ PV可以看作可用的存储资源，PVC则是对存储资源的需求，两者
 
 K8s中有两种方式为PVC提供PV: 静态、动态。资源供应的结果就是创建好的PV。
 
-*静态*
+***静态***
 
 由集群管理员事先去规划这个集群中的用户会怎样使用存储，它会先预分配一些存储，也就是预先创建一些PV；然后用户在提交自己的存储需求（也就是PVC）的时候，K8s内部相关组件会帮助它把PVC和PV做绑定；之后用户再通过pod去使用存储的时候，就可以通过PVC找到相应的PV，它就可以使用了。
 
@@ -133,6 +133,8 @@ spec:
       path: "/k8s"
       vers: "4.0"
 ```
+
+注：csi-nasplugin是为了在k8s中使用阿里云NAS所需的插件，需要提前部署在K8s集群中。
 
 接下来，User创建PVC声明存储需求，根据访问策略和所需空间大小，PersistentVolumeController会将PVC与PV绑定在一起。
 
@@ -171,15 +173,98 @@ spec:
       claimName: nas-pvc
 ```
 
+Pod创建后，便根据PVC来找到PV作为其存储。
 
 
-*动态*
+***动态***
+
+静态产生方式存在不足：首先需要集群管理员预分配，预分配其实是很难预测用户真实需求的，容易造成资源浪费。因此便出现了动态生产，集群管理员无须手工创建PV，而是通过StorageClass的设置对后端存储进行描述，标记为某种 "类型(Class)"。此时要求PVC对存储的类型进行声明，系统将自动完成PV的创建及PVC的绑定。PVC可以声明Class为""，说明该PVC禁止使用动态模式。yinci ,在配置有合适的StorageClass（存储类）且PVC关联了该StorageClass的情况下，K8s集群可以为应用程序动态创建PV。
+
+StorageClass就像是一个创建PV的模板文件，它包含了创建某种具体类型PV所需的参数信息，User无需关系这些PV的细节，只需要通过PVC声明所需大小即可，K8s会结合PVC和StorageClass的信息动态创建PV对象。这样便在没有增加用户使用难度的同时也解放了集群管理员的运维工作，并做到了按需分配。
+
+使用阿里云的云盘来说明动态Provisioning。
+
+首先创建StorageClass
+
 ```
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: csi-disk
+provisioner: diskplugin.csi.alibabacloud.com
+parameters:
+  zoneId: cn-hangzhou-b
+  regionId: cn-hangzhou
+  fsType: ext4
+  type: cloud_ssd
+reclaimPolicy: Delete
+```
+provisioner表明创建PV的时候，应该用哪个存储插件来去创建。
+parameters指定的一些细节参数。对于这些参数，用户是不需要关心的。
+ReclaimPolicy指定回收策略，即使用方使用结束、Pod 及 PVC 被删除后，PV应该怎么处理，Delete的意思就是说当使用方Pod和PVC被删除之后，这个PV也会被删除掉。
+
+注：csi-disk是为了在k8s中使用阿里云云盘所需要的插件，需要提前部署在K8s集群中。
+
+目前集群中是没有PV的，动态提交一个PVC文件，如下
+
+```
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata: 
+  name: disk-pvc
+spec:
+  accessModes:
+  - ReadWriteOnce
+  resources:
+    request:
+      storage: 30Gi
+  storageClassName: csi-disk
+```
+该PVC指明存储大小需求是30G，访问策略为ReadWriteOnce，并指定storageClassName是csi-disk，就是刚才创建的storageclass，也就是说它指定要通过这个模板去生成PV。提交PVC的yaml后，过一会PV便创建成功。这个PV其实就是根据提交的PVC以及PVC里面指定的storageclass动态生成的，之后K8s会将生成的PV以及提交的PVC，就是disk-pvc做绑定。接下来创建Pod，该Pod挂载disk-pvc。
+
+```
+apiVersion: v1
+kind: Pod
+metadata:
+  name: producer
+spec:
+  containers:
+  - name:
+    image: nginx
+    ports:
+    - containersPort: 80
+    volumeMounts:
+    - name: disk-pvc
+      mountPath: /data
+  volumes:
+  - name: disk-pvc
+    persistentVolumeClaim:
+      claimName: disk-pvc
 ```
 
+#### 2.3.4.2 PV与PVC绑定
+
+假设用户创建了一个PVC存储卷声明，并指定了需求的存储空间大小以及访问模式。K8s master将立刻为其匹配一个PV存储卷，并将存储卷声明和存储卷绑定到一起。如果一个PV是动态提供给一个新的PVC，K8s master会始终将其绑定到该PVC。除此之外，应用程序将被绑定一个不小于（可能大于）其PVC中请求的存储空间大小的PV。一旦绑定，PVC将拒绝其他PV的绑定关系。PVC与PV之间的绑定关系是一对一的映射。
+
+注：PVC将始终停留在未绑定unbound状态，直到有合适的PV可用。
+
+#### 2.3.4.3 PV回收（ReclaimPolicy）
+
+当用户不在需要其数据卷时，可以删除掉其PVC，此时其对应的PV将被集群回收并再利用。K8s集群根据PV中的reclaim policy（回收策略）决定在其被回收时做对应的处理。当前支持的回收策略有：Retained（保留）、Recycled（重复利用）、Deleted（删除）。
+
+Retained：保留策略需要集群管理员手工回收该资源。当绑定的PVC被删除后，PV仍然存在，并被认为是“已释放”。但是此时该存储卷仍然不能被其他PVC绑定，因为前一个绑定的PVC对应容器组的数据还在其中。集群管理员可以通过如下步骤回收该PV：删除该PV，PV删除后，其数据仍然存在于对应的外部存储介质中（nfs、cefpfs、glusterfs等）；手工删除对应存储介质上的数据；手工删除对应的存储介质，也可以创建一个新的PV并再次使用该存储介质。
+
+Recycled：再利用策略将在PV回收时，执行一个基本的清除操作rm -rf /thevolume/，并使其可以再次被新的PVC绑定。
+
+Deleted：删除策略将从K8s集群移除PV以及其关联的外部存储介质（云环境中的 AWA EBS、GCE PD、Azure Disk 或 Cinder volume）。
 
 
+#### 2.3.4.4 PV状态机
 
+首先在创建PV对象后，它会处在短暂的pending状态；等真正的PV创建好之后，它就处在available状态。available状态意思就是可以使用的状态，用户在提交PVC之后，被K8s相关组件做完bound（即：找到相应的 PV），这个时候PV和PVC就结合到一起了，此时两者都处在bound状态。当用户在使用完PVC，将其删除后，这个PV就处在released状态，之后它应该被删除还是被保留呢？这个就会依赖ReclaimPolicy。当PV已经处在released状态下，它是没有办法直接回 available状态，也就是说接下来无法被一个新的PVC去做绑定。如果想把已经released的PV复用，一般有两种方式：新建一个PV对象，然后把之前的released的PV的相关字段的信息填到新的PV对象里面，这样的话，这个PV就可以结合新的PVC了；在删除pod之后，不要去删除PVC对象，这样给PV绑定的PVC还是存在的，下次pod使用的时候，就可以直接通过PVC去复用。
+
+
+### 2.3.5 实现机制
 
 
 
