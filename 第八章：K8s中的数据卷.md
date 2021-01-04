@@ -294,6 +294,8 @@ CSI的全称是Container Storage Interface，是K8s实现外部存储插件的�
 
 nfs\cephfs\configMap\secret等
 
+后面章节会详细介绍configMap和secret。
+
 
 # 3. 数据卷内子路径
 
