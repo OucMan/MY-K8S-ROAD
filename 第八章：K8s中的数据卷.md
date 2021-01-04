@@ -266,6 +266,20 @@ Deleted：删除策略将从K8s集群移除PV以及其关联的外部存储介�
 
 ### 2.3.5 实现机制
 
+CSI的全称是Container Storage Interface，是K8s实现外部存储插件的方式，CSI的实现大体可以分为两部分：第一部分是由K8s社区驱动实现的通用的部分，像csi-provisioner controller和csi-attacher controller，它们属于K8s的组件；另外一种是由云存储厂商实践的，对接云存储厂商的OpenApi，主要是实现真正的create/delete/mount/unmount存储的相关操作，比如csi-controller-server和csi-node-server。
+
+按照上图来看一下，用户提交PVC和Pod时，K8s内部的处理流程
+
+用户在提交PVC yaml的时候，首先会在集群中生成一个PVC对象，然后PVC对象会被csi-provisioner controller watch到，csi-provisioner会结合PVC对象以及PVC对象中声明的storageClass，通过GRPC调用 csi-controller-server，然后，到云存储服务这边去创建真正的存储，并最终创建出来PV对象。最后，由集群中的PV controller将PVC和PV对象做bound之后，这个PV就可以被使用了。
+
+
+用户在提交Pod yaml之后，首先会被调度器调度选中某一个合适的node，之后该node上面的kubelet在创建Pod流程中会通过首先csi-node-server将之前创建的PV挂载到Pod可以使用的路径，然后kubelet开始create &&start Pod中的所有container。
+
+可以看到使用CSI使用存储可大致分为三个步骤
+
+* 第一个阶段(Create阶段)是用户提交完PVC，由csi-provisioner创建存储，并生成PV对象，之后PV controller将PVC及生成的PV对象做bound，bound之后，create阶段就完成了；
+* 用户在提交Pod yaml的时候，首先会被调度选中某一个合适的node，等Pod的运行node被选出来之后，会被AD Controller watch到Pod选中的node，它会去查找pod中使用了哪些PV。然后它会生成一个内部的对象叫 VolumeAttachment对象，从而去触发csi-attacher去调用csi-controller-server去做真正的attache操作，attach操作调到云存储厂商OpenAPI。这个attach操作就是将存储attach到Pod将会运行的node上面。第二个阶段，attach阶段完成；
+* 第三个阶段发生在kubelet创建Pod的过程中，它在创建Pod的过程中，首先要去做一个mount，这里的mount操作是为了将已经attach到这个node上面那块盘，进一步mount到Pod可以使用的一个具体路径，之后 kubelet才开始创建并启动容器。这就是PV+PVC创建存储以及使用存储的第三个阶段，mount阶段。
 
 
 ## 2.4 其它类型
