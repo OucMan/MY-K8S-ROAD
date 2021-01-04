@@ -101,6 +101,9 @@ PV可以看作可用的存储资源，PVC则是对存储资源的需求，两者
 
 搞清楚PV和PVC的关系，下面来看一下PV是如何创建的，PVC是如何与PV绑定的，解除绑定后PV又是怎么回收的等等问题。
 
+
+![PV与PVC](https://github.com/OucMan/MY-K8S-ROAD/blob/main/pic/PV-PVC.png)
+
 ### 2.3.4 PV与PVC的生命周期
 
 首先Pv和PVC的生命周期与Pod的生命周期是相互独立的。
@@ -263,10 +266,15 @@ Deleted：删除策略将从K8s集群移除PV以及其关联的外部存储介�
 
 首先在创建PV对象后，它会处在短暂的pending状态；等真正的PV创建好之后，它就处在available状态。available状态意思就是可以使用的状态，用户在提交PVC之后，被K8s相关组件做完bound（即：找到相应的 PV），这个时候PV和PVC就结合到一起了，此时两者都处在bound状态。当用户在使用完PVC，将其删除后，这个PV就处在released状态，之后它应该被删除还是被保留呢？这个就会依赖ReclaimPolicy。当PV已经处在released状态下，它是没有办法直接回 available状态，也就是说接下来无法被一个新的PVC去做绑定。如果想把已经released的PV复用，一般有两种方式：新建一个PV对象，然后把之前的released的PV的相关字段的信息填到新的PV对象里面，这样的话，这个PV就可以结合新的PVC了；在删除pod之后，不要去删除PVC对象，这样给PV绑定的PVC还是存在的，下次pod使用的时候，就可以直接通过PVC去复用。
 
+![PV状态机](https://github.com/OucMan/MY-K8S-ROAD/blob/main/pic/pv_status.png)
+
+
 
 ### 2.3.5 实现机制
 
 CSI的全称是Container Storage Interface，是K8s实现外部存储插件的方式，CSI的实现大体可以分为两部分：第一部分是由K8s社区驱动实现的通用的部分，像csi-provisioner controller和csi-attacher controller，它们属于K8s的组件；另外一种是由云存储厂商实践的，对接云存储厂商的OpenApi，主要是实现真正的create/delete/mount/unmount存储的相关操作，比如csi-controller-server和csi-node-server。
+
+![PVC-PV-CSI](https://github.com/OucMan/MY-K8S-ROAD/blob/main/pic/PVC-PV-CSI.png)
 
 按照上图来看一下，用户提交PVC和Pod时，K8s内部的处理流程
 
