@@ -158,6 +158,20 @@ metadata:
   uid: 8cfae80f-2d79-42e4-be44-7a87374f4de7
 ```
 
+### 2.1.4 YAML文件创建
+*my-configmap.yaml*
+```
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: myconfigmap
+data:
+  sex: man
+  name: Jeff
+  age: '15'
+```
+
+
 ## 2.2 ConfigMap的使用
 
 ConfigMap主要被Pod使用，一般用于挂载Pod用的配置文件，环境变量 ，命令行参数等。
@@ -304,7 +318,7 @@ spec:
     - name: test-container
       image: luksa/kubia:v1
       command: ["/bin/sh","-c","ls /etc/config"]
-      valumeMonuts:
+      volumeMounts:
         - name: config-value
           mountPath: /etc/config
   volumes:
@@ -336,6 +350,428 @@ special.type
 
 
 # 3. Secret
+
+Secret是一个主要用来存储密码token等一些敏感信息的资源对象。其中，敏感信息是采用base-64编码保存起来的。查看Secret的定义：
+```
+apiVersion: v1
+kind: Secret # Secret元数据
+metadata: 
+  name: mysecret
+  namespace: kube-system
+type: Opaque
+data:
+  username: YYUYYYLKSD
+  password: sjdfksdklflkll=
+```
+元数据主要包括name、namespace，type是指Secret的类型,常用的四种类型有：(1)Opaque，普通的Secret文件；(2)service-account-token，用于service-account身份认证用的Secret；(3)dockerconfigjson，是拉取私有仓库镜像的用的一种Secret；(4)bootstrap.token，用于节点接入集群校验用的Secret。再接下来是data，存储的Secret的数据，和ConfigMap一样，它也是key-value的形式存储。
+
+## 3.1 Secret的创建
+
+K8s为每一个namespace的默认用户（default ServiceAccount）创建Secret，用户也可以手动创建Secret，推荐kubectl这个命令行工具，它相对ConfigMap会多一个type参数，其中data也是一样，它也是可以指定文件和键值对的，type的话，要是不指定的话，默认是Opaque类型。
+```
+sudo kubectl create secrt generic [NAME] [DATA] [TYPE]
+```
+### 3.1.1 指定键值对创建
+
+通过--from-literal选项，每个--from-literal对应一个信息条目。
+```
+sudo kubectl create secret generic mysecret --from-literal=username=admin --from-literal=password=123456
+```
+查看创建的mysecret的具体内容
+```
+master@k8s-master:~$ sudo kubectl get secret mysecret -o yaml
+apiVersion: v1
+data:
+  password: MTIzNDU2
+  username: YWRtaW4=
+kind: Secret
+metadata:
+  creationTimestamp: "2021-01-06T01:29:22Z"
+  managedFields:
+  - apiVersion: v1
+    fieldsType: FieldsV1
+    fieldsV1:
+      f:data:
+        .: {}
+        f:password: {}
+        f:username: {}
+      f:type: {}
+    manager: kubectl-create
+    operation: Update
+    time: "2021-01-06T01:29:22Z"
+  name: mysecret
+  namespace: default
+  resourceVersion: "241220"
+  uid: 04979966-d6df-4081-8f35-a1d8f2a4b79d
+type: Opaque
+```
+可以看到username和password分别被表示为YWRtaW4=和MTIzNDU2。我们查看一下admin和123456的base64编码
+```
+master@k8s-master:~$ echo -n admin | base64
+YWRtaW4=
+master@k8s-master:~$ echo -n 123456 | base64
+MTIzNDU2
+```
+可以验证，Secret中确实使用base64编码来存储value
+
+### 3.1.2 指定独立文件创建
+
+通过--from-file选项，每个文件内容对应一个信息条目。
+
+假设在当前目录下我们创建了两个文件：username和password，其中username文件中的内容为admin，password文件中的内容为123456。使用如下命令创建Secret mysecret1
+```
+sudo kubectl create secret generic mysecret1 --from-file=username --from-file=password
+```
+查看创建的mysecret1的具体内容
+```
+master@k8s-master:~$ sudo kubectl get secret mysecret1 -o yaml
+apiVersion: v1
+data:
+  password: MTIzNDU2Cg==
+  username: YWRtaW4K
+kind: Secret
+metadata:
+  creationTimestamp: "2021-01-06T01:39:57Z"
+  managedFields:
+  - apiVersion: v1
+    fieldsType: FieldsV1
+    fieldsV1:
+      f:data:
+        .: {}
+        f:password: {}
+        f:username: {}
+      f:type: {}
+    manager: kubectl-create
+    operation: Update
+    time: "2021-01-06T01:39:57Z"
+  name: mysecret1
+  namespace: default
+  resourceVersion: "242117"
+  uid: f9975230-aa09-43ba-88b1-b44564ab24d1
+type: Opaque
+```
+没有问题！！！
+
+### 3.1.3 指定文件创建
+
+我们还可以将Secret中的每一个key:value放到一个文件中（一行一个），使用--from-env-file来创建Secret，这样文件中每一行的内容对应一个信息条目。
+
+假如我们有一个文件user.txt，其中的内容如下：
+*user.txt*
+```
+username=admin
+password=123456
+```
+
+创建命令如下：
+```
+sudo kubectl create secret generic mysecret2 --from-env-file=user.txt
+```
+查看创建的mysecret2的具体内容
+```
+master@k8s-master:~$ sudo kubectl get secret mysecret2 -o yaml
+apiVersion: v1
+data:
+  password: MTIzNDU2
+  username: YWRtaW4=
+kind: Secret
+metadata:
+  creationTimestamp: "2021-01-06T01:47:22Z"
+  managedFields:
+  - apiVersion: v1
+    fieldsType: FieldsV1
+    fieldsV1:
+      f:data:
+        .: {}
+        f:password: {}
+        f:username: {}
+      f:type: {}
+    manager: kubectl-create
+    operation: Update
+    time: "2021-01-06T01:47:22Z"
+  name: mysecret2
+  namespace: default
+  resourceVersion: "242748"
+  uid: bf3fbf9f-8994-42fa-b561-92c0c8fc35f0
+type: Opaque
+```
+也是OK的！！！
+
+### 3.1.4 YAML文件
+
+*mysecret3.yaml*
+```
+apiVersion: v1
+kind: Secret
+metadata:
+  name: mysecret3
+data:
+  username: admin
+  password: 123456
+```
+使用如下命令来创建
+```
+master@k8s-master:~$ sudo kubectl apply -f mysecret3.yaml 
+Error from server (BadRequest): error when creating "mysecret3.yaml": Secret in version "v1" cannot be handled as a Secret: v1.Secret.Data: base64Codec: invalid input, error found in #10 byte of ...|password":123456,"us|..., bigger context ...|{"apiVersion":"v1","data":{"password":123456,"username":"admin"},"kind":"Secret","metada|...
+```
+呀，报错了，根据报错信息，发现在YAML文件中，value得使用base64编码，因此修改
+```
+apiVersion: v1
+kind: Secret
+metadata:
+  name: mysecret3
+data:
+  username: YWRtaW4=
+  password: MTIzNDU2
+```
+再次创建
+```
+master@k8s-master:~$ sudo kubectl apply -f mysecret3.yaml 
+secret/mysecret3 created
+master@k8s-master:~$ sudo kubectl get secret mysecret3 -o yaml
+apiVersion: v1
+data:
+  password: MTIzNDU2
+  username: YWRtaW4=
+kind: Secret
+metadata:
+  annotations:
+    kubectl.kubernetes.io/last-applied-configuration: |
+      {"apiVersion":"v1","data":{"password":"MTIzNDU2","username":"YWRtaW4="},"kind":"Secret","metadata":{"annotations":{},"name":"mysecret3","namespace":"default"}}
+  creationTimestamp: "2021-01-06T01:56:45Z"
+  managedFields:
+  - apiVersion: v1
+    fieldsType: FieldsV1
+    fieldsV1:
+      f:data:
+        .: {}
+        f:password: {}
+        f:username: {}
+      f:metadata:
+        f:annotations:
+          .: {}
+          f:kubectl.kubernetes.io/last-applied-configuration: {}
+      f:type: {}
+    manager: kubectl-client-side-apply
+    operation: Update
+    time: "2021-01-06T01:56:45Z"
+  name: mysecret3
+  namespace: default
+  resourceVersion: "243540"
+  uid: faf695f4-5d5a-44cd-a8d7-4c8c199cada1
+type: Opaque
+```
+齐活儿~~
+
+## 3.2 查看Secret
+
+首先看一下集群中目前存在的Secret
+```
+master@k8s-master:~$ sudo kubectl get secret
+NAME                  TYPE                                  DATA   AGE
+default-token-vs6vn   kubernetes.io/service-account-token   3      21d
+mysecret              Opaque                                2      40m
+mysecret1             Opaque                                2      29m
+mysecret2             Opaque                                2      22m
+mysecret3             Opaque                                2      12m
+```
+以mysecret为例，通过kubectl describe secret mysecret查看条目的Key
+```
+master@k8s-master:~$ sudo kubectl describe secret mysecret
+Name:         mysecret
+Namespace:    default
+Labels:       <none>
+Annotations:  <none>
+
+Type:  Opaque
+
+Data
+====
+password:  6 bytes
+username:  5 bytes
+```
+
+接着来，使用kubectl edit secret mysecret继续查看value
+```
+# Please edit the object below. Lines beginning with a '#' will be ignored,
+# and an empty file will abort the edit. If an error occurs while saving this file will be
+# reopened with the relevant failures.
+#
+apiVersion: v1
+data:
+  password: MTIzNDU2
+  username: YWRtaW4=
+kind: Secret
+metadata:
+  creationTimestamp: "2021-01-06T01:29:22Z"
+  name: mysecret
+  namespace: default
+  resourceVersion: "241220"
+  uid: 04979966-d6df-4081-8f35-a1d8f2a4b79d
+type: Opaque
+~
+~
+```
+得到data如下
+```
+password: MTIzNDU2
+username: YWRtaW4=
+```
+然后通过base64将Value反编码
+```
+master@k8s-master:~$ echo -n YWRtaW4= | base64 --decode
+adminmaster@k8s-master:~$ 
+master@k8s-master:~$ echo -n MTIzNDU2 | base64 --decode
+123456master@k8s-master:~$ 
+```
+即可获得value值
+
+## 3.3 Secret的使用
+
+Pod可以通过Volume或者环境变量的方式使用Secret。
+
+### 3.3.1 Volume方式
+
+Pod的创建文件如下
+*my-secret-pod.yaml*
+```
+apiVersion: v1
+kind: Pod
+metadata:
+  name: my-secret-pod
+spec:
+  containers:
+    - name: test-container
+      image: luksa/kubia:v1
+      args:
+        - /bin/sh
+        - -c
+        - sleep 30000 
+      volumeMounts:
+        - name: test-secret
+          mountPath: /etc/secret
+          readOnly: true
+  volumes:
+    - name: test-secret
+      secret:
+        secretName: mysecret
+```
+文件解析： 定义volume test-secret，来源为secret mysecret；将test-secret mount到容器路径/etc/secret，可指定读写权限为readOnly。
+
+创建Pod
+```
+master@k8s-master:~$ sudo kubectl apply -f my-secret-pod.yaml 
+pod/my-secret-pod created
+```
+进入容器，读取Secret
+```
+master@k8s-master:~$ sudo kubectl exec -it my-secret-pod -- sh
+# ls /etc/secret             
+password  username
+# cat /etc/secret/username
+admin# 
+# cat /etc/secret/password
+123456# 
+```
+可以看到，K8s会在指定的路径/etc/secret下为每条敏感数据创建一个文件，文件名就是数据条目的Key，这里是/etc/secret/username和/etc/foo/password，Value则以明文存放在文件中。
+
+我们还可以自定义存放数据的文件名，比如将Pod配置文件改为
+
+```
+apiVersion: v1
+kind: Pod
+metadata:
+  name: my-secret-pod
+spec:
+  containers:
+    - name: test-container
+      image: luksa/kubia:v1
+      args:
+        - /bin/sh
+        - -c
+        - sleep 30000 
+      volumeMounts:
+        - name: test-secret
+          mountPath: /etc/secret
+          readOnly: true
+  volumes:
+    - name: test-secret
+      secret:
+        secretName: mysecret
+        items:
+          - key: username
+            path: my-group/my-username
+          - key: password
+            path: my-group/my-password
+```
+查看Pod
+```
+master@k8s-master:~$ sudo kubectl exec -it my-secret-pod -- sh
+# ls /etc/secret
+my-group
+# cat /etc/secret/my-group/my-username
+admin# cat etc/secret/my-group/my-password
+123456# 
+```
+这时数据将分别存放在/etc/secret/my-group/my-username和/etc/secret/my-group/my-password中。
+
+此外，以Volume方式使用的Secret支持动态更新：Secret更新后，容器中的数据也会更新。
+
+### 3.3.2 环境变量方式
+
+K8s还支持通过环境变量使用Secret。
+
+创建Pod
+
+*my-secret-exec-pod.yaml*
+```
+apiVersion: v1
+kind: Pod
+metadata:
+  name: my-secret-pod
+spec:
+  containers:
+  - image: luksa/kubia:v1
+    name: test-container
+    args:
+      - /bin/sh
+      - -c
+      - sleep 30000 
+    env:
+      - name: SECRET_USERNAME
+        valueFrom:
+          secretKeyRef:
+            name: mysecret
+            key: username
+      - name: SECRET_PASSWORD
+        valueFrom:
+          secretKeyRef:
+            name: mysecret
+            key: password
+```
+创建Pod，并且进入容器，查看环境变量
+```
+master@k8s-master:~$ sudo kubectl apply -f my-secret-exec-pod.yaml 
+pod/my-secret-pod created
+master@k8s-master:~$ sudo kubectl get pod
+NAME            READY   STATUS    RESTARTS   AGE
+my-secret-pod   1/1     Running   0          4s
+master@k8s-master:~$ sudo kubectl exec -it my-secret-pod -- sh
+# echo $SECRET_USERNAME
+admin
+# echo $SECRET_PASSWORD
+123456
+# exit
+```
+明明白白的~~
+
+需要注意的是，环境变量读取Secret很方便，但无法支撑Secret动态更新。
+
+### 3.4 总结
+
+* Secret的文件大小限制和ConfigMap一样，也是 1MB；
+* Secret采用了base64编码，但是它跟明文也没有太大区别。所以说，如果有一些机密信息要用Secret来存储的话，还是要很慎重考虑；
+
 
 # 4. ServiceAccount
 
