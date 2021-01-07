@@ -775,6 +775,10 @@ admin
 
 # 4. ServiceAccount
 
+ServiceAccount是用于解决Pod在集群里面的身份认证问题，身份认证信息是存在于Secret里面，这时候Secret的type就是kubernetes.io/service-account-token。
+
+
+
 # 5. Resource
 
 # 6. SecurityContext
