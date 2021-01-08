@@ -777,14 +777,64 @@ admin
 
 ServiceAccount是用于解决Pod在集群里面的身份认证问题，身份认证信息是存在于Secret里面，这时候Secret的type就是kubernetes.io/service-account-token。
 
+关于ServiceAccount我们后面会有专门的章节介绍。
 
 
 # 5. Resource
 
+# 5.1 Resource描述
+
+Resource即为容器的资源配置管理。目前内部支持的资源类型有三种：CPU、内存，以及临时存储，如果需要其他资源需要自己去定义，比如GPU等。资源配置主要分成request和limit两种类型，一个是需要的数量，一个是资源的界限。CPU、内存以及临时存储都是在container下的Resource字段里进行一个声明。
+
+关于单位
+
+* CPU：单位millicore（1 Core = 1000millicore）
+* Memory：单位Byte
+* Ephemeral Storage(临时存储)：单位Byte
+
+实例
+```
+apiVersion: v1
+kind: Pod
+metadata:
+  name: frontend
+spec:
+  containers:
+  - name: wp
+    image: wordpress
+    resources:  # 申明需要的资源
+      request：
+        memory: "64Mi"
+        cpu: "250m"
+        ephemeral-storage: "2Gi"
+      limits:
+        memory: "128Mi"
+        cpu: "500m"
+        ephemeral-storage: "4Gi"
+```
+
+# 5.2 Pod服务质量配置
+
+根据Pod对CPU和内存资源的需求，对Pod的服务质量进行一个分类，分别是Guaranteed、Burstable和BestEffort。
+
+* Guaranteed：Pod里面每个容器都必须有内存和CPU的request以及limit的一个声明，且request和limit必须是一样的，这就是Guaranteed；
+* Burstable：Burstable至少有一个容器存在内存和CPU的一个request；
+* BestEffort：只要不是Guaranteed和Burstable，那就是BestEffort。
+
+资源配置好后，当这个节点上Pod容器运行，比如说节点上memory配额资源不足，kubelet会把一些低优先级的，或者说服务质量要求不高的（如：BestEffort、Burstable）Pod驱逐掉。它们是按照先去除 BestEffort，再去除Burstable的一个顺序来驱逐Pod的。
+
 # 6. SecurityContext
+
+SecurityContext主要是用于限制容器的一个行为，它能保证系统和其他容器的安全，这里不再多说，因为接触的比较少~
 
 # 7. InitContainer
 
+InitContainer和普通container的区别：
+* InitContainer首先会比普通container先启动，并且直到所有的InitContainer执行成功后，普通container才会被启动；
+* InitContainer之间是按定义的次序去启动执行的，执行成功一个之后再执行第二个，而普通的container是并发启动的；
+* InitContainer执行成功后就结束退出，而普通容器可能会一直在执行。它可能是一个长期的，或者说失败了会重启，这个也是InitContainer和普通container不同的地方。
+
+InitContainer的用途：主要为普通container服务，比如说它可以为普通container启动之前做一个初始化，或者为它准备一些配置文件， 配置文件可能是一些变化的东西。再比如做一些前置条件的校验，如网络是否联通。
 
 # 8. 关于ens33网卡消失的小插曲
 
