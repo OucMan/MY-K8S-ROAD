@@ -776,4 +776,49 @@ master@k8s-master:~$ curl localhost:8001/api/v1/namespaces/default/pods/kubia-ma
 
 ### 4.2.1 发现API服务器地址
 
+首先创建Pod
+```
+apiVersion: v1
+kind: Pod
+metadata:
+  name: curl
+spec:
+  containers:
+  - name: main
+    image: tutum/curl
+    command: ["sleep", "9999999"]
+```
+
+集群中有一个kubernetes服务在默认的命名空间被暴露，该服务被配置为指向API服务器
+```
+master@k8s-master:~$ sudo kubectl get svc
+NAME         TYPE        CLUSTER-IP   EXTERNAL-IP   PORT(S)   AGE
+kubernetes   ClusterIP   10.96.0.1    <none>        443/TCP   26d
+```
+每个服务都被配置了对应的环境变量，因此可以进入容器中，查看环境变量
+```
+master@k8s-master:~$ sudo kubectl exec -it curl -- bash
+root@kubia-manual:/# env | grep KUBERNETES_SERVICE
+KUBERNETES_SERVICE_PORT=443
+KUBERNETES_SERVICE_HOST=10.96.0.1
+KUBERNETES_SERVICE_PORT_HTTPS=443
+root@kubia-manual:/# 
+```
+另一种方式就是DNS，直接curl https://kubernetes来指向API 服务器
+
+#### 4.2.2 验证API服务器的身份
+
+连接时通过HTTPS协议，因此需要身份验证。容器在与服务器交互之前，验证服务器身份是必须的，同时API服务器也得认证容器的身份，从而进行授权。
+
+在前面讲述Secret时，集群中会自动创建一个名为default-token-xxxx的Secret，并挂载到每一个容器的/var/run/secrets/kubernetes.io/serviceaccount目录中，查看一下目录下的文件
+```
+root@kubia-manual:/var/run/secrets/kubernetes.io/serviceaccount# ls
+ca.crt	namespace  token
+```
+有三个文件，包括CA证书，它用来验证API服务器的身份，token用来证明容器自己的身份，还有一个命名空间文件。
+
+下面利用--cacert选项来执行CA证书，然后在Http头部添加Token信息，为了简洁，设置两个环境变量
+```
+
+```
 
