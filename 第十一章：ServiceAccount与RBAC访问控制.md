@@ -140,6 +140,177 @@ sudo kubectl delete clusterrolebinding permissive-binding
 
 ## 2.2.1 Role与RoleBinding演示
 
+创建两个命名空间foo和bar
+```
+sudo kubectl create ns foo
+sudo kubectl create ns bar
+```
+创建Pod
+```
+master@k8s-master:~$ sudo kubectl apply -f kubectl-proxy.yaml -n foo
+deployment.apps/test created
+master@k8s-master:~$ sudo kubectl get pods -n foo
+NAME                    READY   STATUS    RESTARTS   AGE
+test-7648b6b45f-tsg9g   1/1     Running   0          5s
+master@k8s-master:~$ sudo kubectl apply -f kubectl-proxy.yaml -n bar
+deployment.apps/test created
+master@k8s-master:~$ sudo kubectl get pods -n bar
+NAME                    READY   STATUS    RESTARTS   AGE
+test-7648b6b45f-lzz7k   1/1     Running   0          7s
+```
+其中kubectl-proxy.yaml的内容为
+```
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: test
+spec:
+  selector:
+    matchLabels:
+      app: test
+  template:
+    metadata:
+      labels:
+        app: test
+    spec:
+      containers:
+      - name: test
+        image: luksa/kubectl-proxy:1.6.2
+```
+进入foo命名空间下的test-7648b6b45f-tsg9g Pod，并尝试访问K8s API服务器
+```
+master@k8s-master:~$ sudo kubectl exec -it test-7648b6b45f-tsg9g -n foo -- sh
+/ # curl localhost:8001/api/v1/namespaces/foo/services
+{
+  "kind": "Status",
+  "apiVersion": "v1",
+  "metadata": {
+    
+  },
+  "status": "Failure",
+  "message": "services is forbidden: User \"system:serviceaccount:foo:default\" cannot list resource \"services\" in API group \"\" in the namespace \"foo\"",
+  "reason": "Forbidden",
+  "details": {
+    "kind": "services"
+  },
+  "code": 403
+}
+```
+根据响应结果可以看到，请求被拒绝，RBAC插件起了作用，同理bar命名空间下的Pod也是一样的。
+
+上述实验表明，在RBAC插件的限制下，Pod使用默认的ServiceAccount不允许列出同一命名空间下的Service列表，下面我们通过创建Role和RoleBinding来向Pod开放这个权限。
+
+Role定义如下
+*service-reader.yaml*
+```
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  namespace: foo
+  name: service-reader
+rules:
+- apiGroups: [""]
+  verbs: ["get", "list"]
+  resources: ["services"]
+```
+
+Role和RoleBinding都需要在命名空间中生效，因此需要指定命名空间，因为资源是在foo命名空间中，因此Role的命名空间也应该是foo，资源设置为Services，注意在指定资源时必须使用复数的形式，允许的动作有get和list，因为Service是核心apiGroup的资源，所以没有apiGroup名，就是“”；可以看到rules是一个复数，所以可以设定多种规则。本例里允许访问所有服务资源，还可以利用resourceNames字段指定服务实例的名称来限制对服务实例的访问。
+
+创建角色
+```
+master@k8s-master:~$ sudo kubectl create -f service-reader.yaml -n foo
+role.rbac.authorization.k8s.io/service-reader created
+```
+除了使用YAML文件的方式创建Role，还可以直接使用kubectl create role命令来创建，使用这种方式创建bar命名空间中的Role
+```
+master@k8s-master:~$ sudo kubectl create role service-reader --verb=get --verb=list --resource=services -n bar
+role.rbac.authorization.k8s.io/service-reader created
+```
+
+创建完Role，下面就要将每个角色绑定到各自命名空间中的ServiceAccount上。通过创建一个RoleBinding资源来实现将角色绑定到主体，运行下面的命令，我们将service-reader角色绑定到default ServiceAccount:
+```
+master@k8s-master:~$ sudo kubectl create rolebinding test --role=service-reader --serviceaccount=foo:default -n foo
+rolebinding.rbac.authorization.k8s.io/test created
+```
+这个RoleBinding资源也被创建在foo命名空间中。
+
+注意，如果要绑定一个角色到一个用户，则使用--user作为参数来指定用户名，如果要绑定角色到组，则使用--group参数。
+
+至此，已经将service-reader角色绑定到foo空间的默认ServiceAccount上，我们来查看一下这个RoleBinding的信息
+
+```
+master@k8s-master:~/$ sudo kubectl get rolebinding test -n foo -o yaml
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  creationTimestamp: "2021-01-14T11:30:38Z"
+  managedFields:
+  - apiVersion: rbac.authorization.k8s.io/v1
+    fieldsType: FieldsV1
+    fieldsV1:
+      f:roleRef:
+        f:apiGroup: {}
+        f:kind: {}
+        f:name: {}
+      f:subjects: {}
+    manager: kubectl-create
+    operation: Update
+    time: "2021-01-14T11:30:38Z"
+  name: test
+  namespace: foo
+  resourceVersion: "297847"
+  uid: a6869bc9-9878-4496-a983-77bcfe65b53a
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: service-reader
+subjects:
+- kind: ServiceAccount
+  name: default
+  namespace: foo
+```
+能够很清晰地看到哪个角色绑定到哪个主体。
+
+接下来尝试一个foo命名空间中的Pod内的应用是否能够从API获得服务列表
+```
+master@k8s-master:~$ sudo kubectl exec -it test-7648b6b45f-tsg9g -n foo -- sh
+/ # curl localhost:8001/api/v1/namespaces/foo/services
+{
+  "kind": "ServiceList",
+  "apiVersion": "v1",
+  "metadata": {
+    "resourceVersion": "298410"
+  },
+  "items": []
+}
+```
+没有问题，已经能够正常的访问到，只是现在foo命名空间内没有服务存在所以items为空。
+
+现在在来看bar命名空间中的Pod，现在该Pod中的进程还不能从API 服务器中得到服务列表，因为还没有将它的ServiceAccount与角色绑定，按照上述的步骤同样可以完成，这个工作就不在重复。现在想要修改foo命名空间中的RoleBinding，添加bar命名空间下的ServiceAccount，使bar命名空间下的Pod能够得到foo命名空间下服务列表。
+```
+sudo kubectl edit rolebinding test -n foo
+```
+在subjects下添加如下内容
+```
+- kind: ServiceAccount
+  name: default
+  namespace: bar
+```
+进入bar命名空间中的Pod，尝试访问foo命名空间下的服务列表
+```
+master@k8s-master:~/$ sudo kubectl exec -it test-7648b6b45f-lzz7k -n bar -- sh
+/ # curl localhost:8001/api/v1/namespaces/foo/services
+{
+  "kind": "ServiceList",
+  "apiVersion": "v1",
+  "metadata": {
+    "resourceVersion": "299769"
+  },
+  "items": []
+}
+```
+没有问题，经过上述操作，目前集群中在foo命名空间下有一个RoleBinding，它引用了foo命名空间中的service-reader角色，并且绑定了foo和bar命名空间中的default ServiceAccount。
+
 
 
 ## 2.2.2 ClusterRole与ClusterRoleBinding演示
