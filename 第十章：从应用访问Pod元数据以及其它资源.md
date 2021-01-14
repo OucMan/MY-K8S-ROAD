@@ -770,7 +770,7 @@ master@k8s-master:~$ curl localhost:8001/api/v1/namespaces/default/pods/kubia-ma
 ```
 这样就获得了指定Pod的信息
 
-## 4.2 Pod内部与K8s API交互
+## 4.2 Pod内部与K8s API交互（常规方式）
 
 上面的实验我们是从本机通过kubectl proxy与API服务器进行交互，下面开始描述Pod内部与API服务器交互的流程。
 
@@ -819,6 +819,394 @@ ca.crt	namespace  token
 
 下面利用--cacert选项来执行CA证书，然后在Http头部添加Token信息，为了简洁，设置两个环境变量
 ```
-
+export CURL_CA_BUNDLE=/var/run/secrets/kubernetes.io/serviceaccount/ca.crt
+TOKEN=$(cat /var/run/secrets/kubernetes.io/serviceaccount/token)
 ```
+
+然后尝试去访问API服务器
+```
+curl -H "Authorization: Bearer $TOKEN" https://10.96.0.1
+```
+不幸地是，还是访问失败，其原因便是我们的K8s集群使用的基于角色的访问控制（RBAC），这个我们在后续章节会重点讲述，因此默认的服务账户没有被授权访问API服务器，最简单的，我们通过为所有的服务账户赋予集群管理员权限来绕过RBAC机制，执行下面的命令
+```
+master@k8s-master:~$ sudo kubectl create clusterrolebinding permissive-binding --clusterrole=cluster-admin --group=system:serviceaccounts
+[sudo] password for master: 
+clusterrolebinding.rbac.authorization.k8s.io/permissive-binding created
+```
+这次再在Pod中去访问API服务器
+```
+root@curl:/# curl -H "Authorization: Bearer $TOKEN" https://10.96.0.1
+{
+  "paths": [
+    "/.well-known/openid-configuration",
+    "/api",
+    "/api/v1",
+    "/apis",
+    "/apis/",
+    "/apis/admissionregistration.k8s.io",
+    "/apis/admissionregistration.k8s.io/v1",
+    "/apis/admissionregistration.k8s.io/v1beta1",
+    "/apis/apiextensions.k8s.io",
+    "/apis/apiextensions.k8s.io/v1",
+    "/apis/apiextensions.k8s.io/v1beta1",
+    "/apis/apiregistration.k8s.io",
+    "/apis/apiregistration.k8s.io/v1",
+    "/apis/apiregistration.k8s.io/v1beta1",
+    "/apis/apps",
+    "/apis/apps/v1",
+    "/apis/authentication.k8s.io",
+    "/apis/authentication.k8s.io/v1",
+...
+```
+搞定，然后就可以在Pod中访问集群中的所有资源了。我们注意到容器的/var/run/secrets/kubernetes.io/serviceaccount目录中还有一个namespace文件，这个文件包含了当前Pod所在的命名空间，因此可以通过读取这个文件来获得命名空间信息，我们查看一下该命名空间下所有的Pod，如下
+```
+root@curl:/# cat /var/run/secrets/kubernetes.io/serviceaccount/namespace 
+default
+root@curl:/# NS=$(cat /var/run/secrets/kubernetes.io/serviceaccount/namespace) 
+root@curl:/# curl -H "Authorization: Bearer $TOKEN" https://10.96.0.1/api/v1/namespaces/$NS/pods
+{
+  "kind": "PodList",
+  "apiVersion": "v1",
+  "metadata": {
+    "resourceVersion": "262776"
+  },
+  "items": [
+    {
+      "metadata": {
+        "name": "curl",
+        "namespace": "default",
+        "uid": "ca4b2fb1-736a-4fea-ae87-0ea954c9fdc5",
+        "resourceVersion": "261760",
+        "creationTimestamp": "2021-01-14T02:09:58Z",
+        "annotations": {
+          "kubectl.kubernetes.io/last-applied-configuration": "{\"apiVersion\":\"v1\",\"kind\":\"Pod\",\"metadata\":{\"annotations\":{},\"name\":\"curl\",\"namespace\":\"default\"},\"spec\":{\"containers\":[{\"command\":[\"sleep\",\"9999999\"],\"image\":\"tutum/curl\",\"name\":\"main\"}]}}\n"
+        },
+        "managedFields": [
+          {
+            "manager": "kubectl-client-side-apply",
+            "operation": "Update",
+            "apiVersion": "v1",
+            "time": "2021-01-14T02:09:58Z",
+            "fieldsType": "FieldsV1",
+            "fieldsV1": {"f:metadata":{"f:annotations":{".":{},"f:kubectl.kubernetes.io/last-applied-configuration":{}}},"f:spec":{"f:containers":{"k:{\"name\":\"main\"}":{".":{},"f:command":{},"f:image":{},"f:imagePullPolicy":{},"f:name":{},"f:resources":{},"f:terminationMessagePath":{},"f:terminationMessagePolicy":{}}},"f:dnsPolicy":{},"f:enableServiceLinks":{},"f:restartPolicy":{},"f:schedulerName":{},"f:securityContext":{},"f:terminationGracePeriodSeconds":{}}}
+          },
+          {
+            "manager": "kubelet",
+            "operation": "Update",
+            "apiVersion": "v1",
+            "time": "2021-01-14T02:10:02Z",
+            "fieldsType": "FieldsV1",
+            "fieldsV1": {"f:status":{"f:conditions":{"k:{\"type\":\"ContainersReady\"}":{".":{},"f:lastProbeTime":{},"f:lastTransitionTime":{},"f:status":{},"f:type":{}},"k:{\"type\":\"Initialized\"}":{".":{},"f:lastProbeTime":{},"f:lastTransitionTime":{},"f:status":{},"f:type":{}},"k:{\"type\":\"Ready\"}":{".":{},"f:lastProbeTime":{},"f:lastTransitionTime":{},"f:status":{},"f:type":{}}},"f:containerStatuses":{},"f:hostIP":{},"f:phase":{},"f:podIP":{},"f:podIPs":{".":{},"k:{\"ip\":\"10.244.1.42\"}":{".":{},"f:ip":{}}},"f:startTime":{}}}
+          }
+        ]
+      },
+      "spec": {
+        "volumes": [
+          {
+            "name": "default-token-vs6vn",
+            "secret": {
+              "secretName": "default-token-vs6vn",
+              "defaultMode": 420
+            }
+          }
+        ],
+        "containers": [
+          {
+            "name": "main",
+            "image": "tutum/curl",
+            "command": [
+              "sleep",
+              "9999999"
+            ],
+            "resources": {
+              
+            },
+            "volumeMounts": [
+              {
+                "name": "default-token-vs6vn",
+                "readOnly": true,
+                "mountPath": "/var/run/secrets/kubernetes.io/serviceaccount"
+              }
+            ],
+            "terminationMessagePath": "/dev/termination-log",
+            "terminationMessagePolicy": "File",
+            "imagePullPolicy": "Always"
+          }
+        ],
+        "restartPolicy": "Always",
+        "terminationGracePeriodSeconds": 30,
+        "dnsPolicy": "ClusterFirst",
+        "serviceAccountName": "default",
+        "serviceAccount": "default",
+        "nodeName": "k8s-node1",
+        "securityContext": {
+          
+        },
+        "schedulerName": "default-scheduler",
+        "tolerations": [
+          {
+            "key": "node.kubernetes.io/not-ready",
+            "operator": "Exists",
+            "effect": "NoExecute",
+            "tolerationSeconds": 300
+          },
+          {
+            "key": "node.kubernetes.io/unreachable",
+            "operator": "Exists",
+            "effect": "NoExecute",
+            "tolerationSeconds": 300
+          }
+        ],
+        "priority": 0,
+        "enableServiceLinks": true,
+        "preemptionPolicy": "PreemptLowerPriority"
+      },
+      "status": {
+        "phase": "Running",
+        "conditions": [
+          {
+            "type": "Initialized",
+            "status": "True",
+            "lastProbeTime": null,
+            "lastTransitionTime": "2021-01-14T02:09:58Z"
+          },
+          {
+            "type": "Ready",
+            "status": "True",
+            "lastProbeTime": null,
+            "lastTransitionTime": "2021-01-14T02:10:02Z"
+          },
+          {
+            "type": "ContainersReady",
+            "status": "True",
+            "lastProbeTime": null,
+            "lastTransitionTime": "2021-01-14T02:10:02Z"
+          },
+          {
+            "type": "PodScheduled",
+            "status": "True",
+            "lastProbeTime": null,
+            "lastTransitionTime": "2021-01-14T02:09:58Z"
+          }
+        ],
+        "hostIP": "10.10.10.148",
+        "podIP": "10.244.1.42",
+        "podIPs": [
+          {
+            "ip": "10.244.1.42"
+          }
+        ],
+        "startTime": "2021-01-14T02:09:58Z",
+        "containerStatuses": [
+          {
+            "name": "main",
+            "state": {
+              "running": {
+                "startedAt": "2021-01-14T02:10:02Z"
+              }
+            },
+            "lastState": {
+              
+            },
+            "ready": true,
+            "restartCount": 0,
+            "image": "tutum/curl:latest",
+            "imageID": "docker-pullable://tutum/curl@sha256:b6f16e88387acd4e6326176b212b3dae63f5b2134e69560d0b0673cfb0fb976f",
+            "containerID": "docker://39be59377212bcc75ff51bc585d79e225cb639b286d03c8f737440594f1d70b6",
+            "started": true
+          }
+        ],
+        "qosClass": "BestEffort"
+      }
+    }
+  ]
+}
+```
+总结一下，Pod中运行的应用访问K8s API服务器的流程：
+* 应用验证API服务器的证书是否为整数机构所办法，这个证书就是ca.crt
+* 应用凭借在token文件中持有的凭证来向API服务器证明自己的身份，并且通过Authorization标头来获得API服务器的授权；
+* 当对Pod所在命名空间的API对象进行CRUD操作时，应该使用namespace文件来传递命名空间信息到API服务器。
+
+## 4.3 Pod内部与K8s API交互（ambassador容器方式）
+
+本机上可以通过kubectl proxy命令来使用代理，帮助完成证书和授权操作，减轻了用户的操作，同样的如果一个应用需要访问API服务器，除了直接交互外，可以在主容器运行的同时，启动一个ambassador容器，并在其中运行kubectl proxy命令，通过它来实现与API服务器的交互。
+
+这种模式呀，运行在主容器中的应用不是直接与API服务器进行交互，而是通过HTTP协议与ambassador容器连接，并且由ambassador容器通过HTTPS协议来连接API服务器，这对于应用来说是透明的，本质上ambassador容器也是使用的默认凭证Secret卷中的文件。
+
+
+## 4.3.1 演示过程
+
+创建Pod
+*curl-with-ambassador.yaml*
+```
+apiVersion: v1
+kind: Pod
+metadata:
+  name: curl-with-ambassador
+spec:
+  containers:
+  - name: main
+    image: tutum/curl
+    command: ["sleep", "9999999"]
+  - name: ambassador
+    image: luksa/kubectl-proxy:1.6.2
+```
+
+镜像luksa/kubectl-proxy:1.6.2便是ambassador容器，负责运行kubectl-proxy
+
+创建Pod，并进入main容器中
+```
+sudo kubectl apply -f curl-with-ambassador.yaml
+```
+```
+master@k8s-master:~/k8s-learning/resources/pod$ sudo kubectl exec -it curl-with-ambassador -c main -- bash
+root@curl-with-ambassador:/# curl localhost:8001
+{
+  "paths": [
+    "/.well-known/openid-configuration",
+    "/api",
+    "/api/v1",
+    "/apis",
+    "/apis/",
+    "/apis/admissionregistration.k8s.io",
+    "/apis/admissionregistration.k8s.io/v1",
+    "/apis/admissionregistration.k8s.io/v1beta1",
+    "/apis/apiextensions.k8s.io",
+    "/apis/apiextensions.k8s.io/v1",
+    "/apis/apiextensions.k8s.io/v1beta1",
+    "/apis/apiregistration.k8s.io",
+    "/apis/apiregistration.k8s.io/v1",
+    "/apis/apiregistration.k8s.io/v1beta1",
+    "/apis/apps",
+    "/apis/apps/v1",
+    "/apis/authentication.k8s.io",
+    "/apis/authentication.k8s.io/v1",
+    "/apis/authentication.k8s.io/v1beta1",
+    "/apis/authorization.k8s.io",
+    "/apis/authorization.k8s.io/v1",
+    "/apis/authorization.k8s.io/v1beta1",
+    "/apis/autoscaling",
+    "/apis/autoscaling/v1",
+    "/apis/autoscaling/v2beta1",
+    "/apis/autoscaling/v2beta2",
+    "/apis/batch",
+    "/apis/batch/v1",
+    "/apis/batch/v1beta1",
+    "/apis/certificates.k8s.io",
+    "/apis/certificates.k8s.io/v1",
+    "/apis/certificates.k8s.io/v1beta1",
+    "/apis/coordination.k8s.io",
+    "/apis/coordination.k8s.io/v1",
+    "/apis/coordination.k8s.io/v1beta1",
+    "/apis/discovery.k8s.io",
+    "/apis/discovery.k8s.io/v1beta1",
+    "/apis/events.k8s.io",
+    "/apis/events.k8s.io/v1",
+    "/apis/events.k8s.io/v1beta1",
+    "/apis/extensions",
+    "/apis/extensions/v1beta1",
+    "/apis/flowcontrol.apiserver.k8s.io",
+    "/apis/flowcontrol.apiserver.k8s.io/v1beta1",
+    "/apis/networking.k8s.io",
+    "/apis/networking.k8s.io/v1",
+    "/apis/networking.k8s.io/v1beta1",
+    "/apis/node.k8s.io",
+    "/apis/node.k8s.io/v1",
+    "/apis/node.k8s.io/v1beta1",
+    "/apis/policy",
+    "/apis/policy/v1beta1",
+    "/apis/rbac.authorization.k8s.io",
+    "/apis/rbac.authorization.k8s.io/v1",
+    "/apis/rbac.authorization.k8s.io/v1beta1",
+    "/apis/scheduling.k8s.io",
+    "/apis/scheduling.k8s.io/v1",
+    "/apis/scheduling.k8s.io/v1beta1",
+    "/apis/storage.k8s.io",
+    "/apis/storage.k8s.io/v1",
+    "/apis/storage.k8s.io/v1beta1",
+    "/healthz",
+    "/healthz/autoregister-completion",
+    "/healthz/etcd",
+    "/healthz/log",
+    "/healthz/ping",
+    "/healthz/poststarthook/aggregator-reload-proxy-client-cert",
+    "/healthz/poststarthook/apiservice-openapi-controller",
+    "/healthz/poststarthook/apiservice-registration-controller",
+    "/healthz/poststarthook/apiservice-status-available-controller",
+    "/healthz/poststarthook/bootstrap-controller",
+    "/healthz/poststarthook/crd-informer-synced",
+    "/healthz/poststarthook/generic-apiserver-start-informers",
+    "/healthz/poststarthook/kube-apiserver-autoregistration",
+    "/healthz/poststarthook/priority-and-fairness-config-consumer",
+    "/healthz/poststarthook/priority-and-fairness-config-producer",
+    "/healthz/poststarthook/priority-and-fairness-filter",
+    "/healthz/poststarthook/rbac/bootstrap-roles",
+    "/healthz/poststarthook/scheduling/bootstrap-system-priority-classes",
+    "/healthz/poststarthook/start-apiextensions-controllers",
+    "/healthz/poststarthook/start-apiextensions-informers",
+    "/healthz/poststarthook/start-cluster-authentication-info-controller",
+    "/healthz/poststarthook/start-kube-aggregator-informers",
+    "/healthz/poststarthook/start-kube-apiserver-admission-initializer",
+    "/livez",
+    "/livez/autoregister-completion",
+    "/livez/etcd",
+    "/livez/log",
+    "/livez/ping",
+    "/livez/poststarthook/aggregator-reload-proxy-client-cert",
+    "/livez/poststarthook/apiservice-openapi-controller",
+    "/livez/poststarthook/apiservice-registration-controller",
+    "/livez/poststarthook/apiservice-status-available-controller",
+    "/livez/poststarthook/bootstrap-controller",
+    "/livez/poststarthook/crd-informer-synced",
+    "/livez/poststarthook/generic-apiserver-start-informers",
+    "/livez/poststarthook/kube-apiserver-autoregistration",
+    "/livez/poststarthook/priority-and-fairness-config-consumer",
+    "/livez/poststarthook/priority-and-fairness-config-producer",
+    "/livez/poststarthook/priority-and-fairness-filter",
+    "/livez/poststarthook/rbac/bootstrap-roles",
+    "/livez/poststarthook/scheduling/bootstrap-system-priority-classes",
+    "/livez/poststarthook/start-apiextensions-controllers",
+    "/livez/poststarthook/start-apiextensions-informers",
+    "/livez/poststarthook/start-cluster-authentication-info-controller",
+    "/livez/poststarthook/start-kube-aggregator-informers",
+    "/livez/poststarthook/start-kube-apiserver-admission-initializer",
+    "/logs",
+    "/metrics",
+    "/openapi/v2",
+    "/openid/v1/jwks",
+    "/readyz",
+    "/readyz/autoregister-completion",
+    "/readyz/etcd",
+    "/readyz/informer-sync",
+    "/readyz/log",
+    "/readyz/ping",
+    "/readyz/poststarthook/aggregator-reload-proxy-client-cert",
+    "/readyz/poststarthook/apiservice-openapi-controller",
+    "/readyz/poststarthook/apiservice-registration-controller",
+    "/readyz/poststarthook/apiservice-status-available-controller",
+    "/readyz/poststarthook/bootstrap-controller",
+    "/readyz/poststarthook/crd-informer-synced",
+    "/readyz/poststarthook/generic-apiserver-start-informers",
+    "/readyz/poststarthook/kube-apiserver-autoregistration",
+    "/readyz/poststarthook/priority-and-fairness-config-consumer",
+    "/readyz/poststarthook/priority-and-fairness-config-producer",
+    "/readyz/poststarthook/priority-and-fairness-filter",
+    "/readyz/poststarthook/rbac/bootstrap-roles",
+    "/readyz/poststarthook/scheduling/bootstrap-system-priority-classes",
+    "/readyz/poststarthook/start-apiextensions-controllers",
+    "/readyz/poststarthook/start-apiextensions-informers",
+    "/readyz/poststarthook/start-cluster-authentication-info-controller",
+    "/readyz/poststarthook/start-kube-aggregator-informers",
+    "/readyz/poststarthook/start-kube-apiserver-admission-initializer",
+    "/readyz/shutdown",
+    "/version"
+  ]
+}
+```
+主容器中的应用通过本机的8001端口，进入ambassador容器，然后ambassador容器负责加密、授权、服务器验证工作后，与API服务器通信。
+
+# 5 总结
+
+本章描述了Pod中的应用通过环境变量、DownwardAPI卷、以及与K8s API交互的方式获得Pod、容器甚至集群资源。
+
 
