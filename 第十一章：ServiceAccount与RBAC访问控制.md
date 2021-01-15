@@ -138,7 +138,7 @@ sudo kubectl delete clusterrolebinding permissive-binding
 ```
 上面的两个语句，看完本章后就会门儿清了。
 
-## 2.2.1 Role与RoleBinding演示
+### 2.2.1 Role与RoleBinding演示
 
 创建两个命名空间foo和bar
 ```
@@ -312,10 +312,390 @@ master@k8s-master:~/$ sudo kubectl exec -it test-7648b6b45f-lzz7k -n bar -- sh
 没有问题，经过上述操作，目前集群中在foo命名空间下有一个RoleBinding，它引用了foo命名空间中的service-reader角色，并且绑定了foo和bar命名空间中的default ServiceAccount。
 
 
+### 2.2.2 ClusterRole与ClusterRoleBinding演示
 
-## 2.2.2 ClusterRole与ClusterRoleBinding演示
+Role和RoleBinding都是命名空间的资源，这意味着他们属于和应用在一个单一的命名空间资源上，但是RoleBinding可以应用来自其他命名空间的ServiceAccount。
 
+K8s中还有两个集群级别的RBAC资源：ClusterRole和ClusterRoleBinding。ClusterRole允许访问没有命名空间的资源（Node\PV\Namespace等）和非资源型URL（/healthz等），或者作为单个命名空间内部绑定的公共角色，从而避免必须在每个命名空间中重新定义相同的角色。
 
+#### 2.2.2.1 访问集群级别的资源
+
+下面演示如何允许Pod列出集群中的PV
+
+首先创建一个ClusterRole，名叫pv-reader
+```
+sudo kubectl create clusterrole pv-reader --verb=get,list --resource=persistentvolumes
+```
+查看该ClusterRole的详情
+```
+master@k8s-master:~$ sudo kubectl get clusterrole pv-reader -o yaml
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  creationTimestamp: "2021-01-15T01:53:21Z"
+  managedFields:
+  - apiVersion: rbac.authorization.k8s.io/v1
+    fieldsType: FieldsV1
+    fieldsV1:
+      f:rules: {}
+    manager: kubectl-create
+    operation: Update
+    time: "2021-01-15T01:53:21Z"
+  name: pv-reader
+  resourceVersion: "301312"
+  uid: ebc052e1-3e18-4b28-8d81-cfca64331881
+rules:
+- apiGroups:
+  - ""
+  resources:
+  - persistentvolumes
+  verbs:
+  - get
+  - list
+```
+
+在将ClusterRole绑定到Pod之前，先来验证一下能够列出PV，我们进入foo命名空间下的Pod中，尝试访问PV
+```
+master@k8s-master:~$ sudo kubectl exec -it test-7648b6b45f-tsg9g -n foo -- sh
+/ # curl localhost:8001/api/v1/persistentvolumes
+{
+  "kind": "Status",
+  "apiVersion": "v1",
+  "metadata": {
+    
+  },
+  "status": "Failure",
+  "message": "persistentvolumes is forbidden: User \"system:serviceaccount:foo:default\" cannot list resource \"persistentvolumes\" in API group \"\" at the cluster scope",
+  "reason": "Forbidden",
+  "details": {
+    "kind": "persistentvolumes"
+  },
+  "code": 403
+}
+```
+目前看还是不可以的！
+
+下面创建ClusterRoleBinding，将ClusterRole与Pod的ServiceAccount绑定在一起，注意当想要授权Pod访问集群级资源时，不能使用RoleBinding绑定ClusterRole与Pod的ServiceAccount。
+
+创建ClusterRoleBinding
+```
+sudo kubectl create clusterrolebinding pv-test --clusterrole=pv-reader --serviceaccount=foo:default
+```
+然后再次进入foo命名空间下的Pod中，访问PV
+```
+master@k8s-master:~$ sudo kubectl exec -it test-7648b6b45f-tsg9g -n foo -- sh
+/ # curl localhost:8001/api/v1/persistentvolumes
+{
+  "kind": "PersistentVolumeList",
+  "apiVersion": "v1",
+  "metadata": {
+    "resourceVersion": "302597"
+  },
+  "items": []
+}
+```
+没有问题，现在Pod已经获得了访问PV的权限了
+
+#### 2.2.2.2 访问非资源型的URL
+
+API服务器也会外暴露非资源型的URL，访问这些URL也必须要显示地授予权限，否则API服务器会拒绝客户端的请求。通常这个会通过system:discovery ClusterRole和相同命名的ClusterRoleBinding来自动完成。
+
+查看一下默认的system:discovery ClusterRole
+```
+master@k8s-master:~$ sudo kubectl get clusterrole system:discovery -o yaml
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  annotations:
+    rbac.authorization.kubernetes.io/autoupdate: "true"
+  creationTimestamp: "2020-12-15T13:12:19Z"
+  labels:
+    kubernetes.io/bootstrapping: rbac-defaults
+  managedFields:
+  - apiVersion: rbac.authorization.k8s.io/v1
+    fieldsType: FieldsV1
+    fieldsV1:
+      f:metadata:
+        f:annotations:
+          .: {}
+          f:rbac.authorization.kubernetes.io/autoupdate: {}
+        f:labels:
+          .: {}
+          f:kubernetes.io/bootstrapping: {}
+      f:rules: {}
+    manager: kube-apiserver
+    operation: Update
+    time: "2020-12-15T13:12:19Z"
+  name: system:discovery
+  resourceVersion: "83"
+  uid: c75aa89c-d5c1-46ee-a26e-44947e145c03
+rules:
+- nonResourceURLs:
+  - /api
+  - /api/*
+  - /apis
+  - /apis/*
+  - /healthz
+  - /livez
+  - /openapi
+  - /openapi/*
+  - /readyz
+  - /version
+  - /version/
+  verbs:
+  - get
+```
+可以看出，该ClusterRole引用的是URL路径而不是自愿，verbs字段只允许使用HTTP GET方法
+
+和集群级别的资源一样，非资源型的URL ClusterRole必须与ClusterRoleBinding结合使用，与RoleBinding绑定没有任何效果。
+
+与system:discovery ClusterRole对应的还有一个system:discovery ClusterRoleBinding，查看一下
+```
+master@k8s-master:~$ sudo kubectl get clusterrolebinding system:discovery -o yaml
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  annotations:
+    rbac.authorization.kubernetes.io/autoupdate: "true"
+  creationTimestamp: "2020-12-15T13:12:19Z"
+  labels:
+    kubernetes.io/bootstrapping: rbac-defaults
+  managedFields:
+  - apiVersion: rbac.authorization.k8s.io/v1
+    fieldsType: FieldsV1
+    fieldsV1:
+      f:metadata:
+        f:annotations:
+          .: {}
+          f:rbac.authorization.kubernetes.io/autoupdate: {}
+        f:labels:
+          .: {}
+          f:kubernetes.io/bootstrapping: {}
+      f:roleRef:
+        f:apiGroup: {}
+        f:kind: {}
+        f:name: {}
+      f:subjects: {}
+    manager: kube-apiserver
+    operation: Update
+    time: "2020-12-15T13:12:19Z"
+  name: system:discovery
+  resourceVersion: "144"
+  uid: 48ee6a60-ecde-419a-a061-13f5cf86089a
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: system:discovery
+subjects:
+- apiGroup: rbac.authorization.k8s.io
+  kind: Group
+  name: system:authenticated
+```
+ClusterRoleBinding 绑定了system:discovery ClusterRole和system:authenticated组，也就是经过认证的用户都可以Get非资源型URL。我们来确认一下
+
+首先未通过认证的用户不能Get非资源型URL
+```
+master@k8s-master:~$ curl https://10.10.10.147:6443/api -k
+{
+  "kind": "Status",
+  "apiVersion": "v1",
+  "metadata": {
+    
+  },
+  "status": "Failure",
+  "message": "forbidden: User \"system:anonymous\" cannot get path \"/api\"",
+  "reason": "Forbidden",
+  "details": {
+    
+  },
+  "code": 403
+}
+```
+
+然后通过认证的用户能Get非资源型URL
+
+开启kubectl proxy
+```
+master@k8s-master:~$ sudo kubectl proxy
+Starting to serve on 127.0.0.1:8001
+```
+访问
+```
+master@k8s-master:~$ curl localhost:8001/api
+{
+  "kind": "APIVersions",
+  "versions": [
+    "v1"
+  ],
+  "serverAddressByClientCIDRs": [
+    {
+      "clientCIDR": "0.0.0.0/0",
+      "serverAddress": "10.10.10.147:6443"
+    }
+  ]
+}
+```
+
+#### 2.2.2.3 使用ClusterRole来授权访问指定命名空间中的资源
+
+ClusterRole不是一定和集群级别的ClusterRoleBinding绑定使用，它们也可以和常规的有命名空间的RoleBinding进行绑定。
+
+集群中有一个名为view的ClusterRole，其信息如下
+```
+master@k8s-master:~$ sudo kubectl get clusterrole view -o yaml
+aggregationRule:
+  clusterRoleSelectors:
+  - matchLabels:
+      rbac.authorization.k8s.io/aggregate-to-view: "true"
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  annotations:
+    rbac.authorization.kubernetes.io/autoupdate: "true"
+  creationTimestamp: "2020-12-15T13:12:19Z"
+  labels:
+    kubernetes.io/bootstrapping: rbac-defaults
+    rbac.authorization.k8s.io/aggregate-to-edit: "true"
+  managedFields:
+  - apiVersion: rbac.authorization.k8s.io/v1
+    fieldsType: FieldsV1
+    fieldsV1:
+      f:aggregationRule:
+        .: {}
+        f:clusterRoleSelectors: {}
+      f:metadata:
+        f:annotations:
+          .: {}
+          f:rbac.authorization.kubernetes.io/autoupdate: {}
+        f:labels:
+          .: {}
+          f:kubernetes.io/bootstrapping: {}
+          f:rbac.authorization.k8s.io/aggregate-to-edit: {}
+    manager: kube-apiserver
+    operation: Update
+    time: "2020-12-15T13:12:19Z"
+  - apiVersion: rbac.authorization.k8s.io/v1
+    fieldsType: FieldsV1
+    fieldsV1:
+      f:rules: {}
+    manager: kube-controller-manager
+    operation: Update
+    time: "2020-12-15T13:12:36Z"
+  name: view
+  resourceVersion: "416"
+  uid: b5576df0-538b-4c12-97f8-c65b5a73589a
+rules:
+- apiGroups:
+  - ""
+  resources:
+  - configmaps
+  - endpoints
+  - persistentvolumeclaims
+  - persistentvolumeclaims/status
+  - pods
+  - replicationcontrollers
+  - replicationcontrollers/scale
+  - serviceaccounts
+  - services
+  - services/status
+  verbs:
+  - get
+  - list
+  - watch
+...
+```
+这个ClusterRole有很多规则，我们显示了第一条，可以看到在该规则中包括资源ConfigMap、Endpoint、PVC等，这些资源都是由命名空间的，允许的操作为get、list和watch。
+
+下面好玩的地方来了，假如这个ClusterRole与ClusterRoleBinding绑定，那么绑定中的主体可以在所有的命名空间中查看指定的资源。假如这个ClusterRole与RoleBinding绑定，那么绑定中的主体只能查看在RoleBinding命名空间中查看指定的资源。
+
+分来来看看，首先创建一个ClusterRoleBinding，将view ClusterRole与foo命名空间下的defult ServiceAccount绑定。
+```
+master@k8s-master:~$ sudo kubectl create clusterrolebinding view-test --clusterrole=view --serviceaccount=foo:default
+clusterrolebinding.rbac.authorization.k8s.io/view-test created
+```
+进入foo命名空间中的testPod中，尝试查看foo命名空间中的Pod列表和bar命名空间中的Pod列表
+```
+master@k8s-master:~$ sudo kubectl exec -it test-7648b6b45f-tsg9g -n foo -- sh
+/ # curl localhost:8001/api/v1/namespaces/foo/pods
+{
+  "kind": "PodList",
+  "apiVersion": "v1",
+...
+
+/ # curl localhost:8001/api/v1/namespaces/bar/pods
+{
+  "kind": "PodList",
+  "apiVersion": "v1",
+...
+
+/ # curl localhost:8001/api/v1/pods
+{
+  "kind": "PodList",
+  "apiVersion": "v1",
+...
+
+```
+没问题都能够访问，证明了ClusterRole与ClusterRoleBinding绑定，绑定中的主体可以在所有的命名空间中查看指定的资源。
+
+然后我们删除ClusterRoleBinding，并创建一个RoleBinding
+```
+master@k8s-master:~$ sudo kubectl delete clusterrolebinding view-test
+clusterrolebinding.rbac.authorization.k8s.io "view-test" deleted
+master@k8s-master:~$ sudo kubectl create rolebinding view-test --clusterrole=view --serviceaccount=foo:default -n foo
+rolebinding.rbac.authorization.k8s.io/view-test created
+```
+
+现在foo命名空间中有一个RoleBinding，它将同一命名空间中的default ServiceAccount绑定到view ClusterRole。
+
+现在来看一下foo命名空间中的Pod可以访问哪些资源呢
+
+```
+master@k8s-master:~$ sudo kubectl exec -it test-7648b6b45f-tsg9g -n foo -- sh
+/ # curl localhost:8001/api/v1/namespaces/foo/pods
+{
+  "kind": "PodList",
+  "apiVersion": "v1",
+  "metadata": {
+    "resourceVersion": "308171"
+  },
+  "items": [
+    ...
+  ]
+/ # curl localhost:8001/api/v1/namespaces/bar/pods
+{
+  "kind": "Status",
+  "apiVersion": "v1",
+  "metadata": {
+    
+  },
+  "status": "Failure",
+  "message": "pods is forbidden: User \"system:serviceaccount:foo:default\" cannot list resource \"pods\" in API group \"\" in the namespace \"bar\"",
+  "reason": "Forbidden",
+  "details": {
+    "kind": "pods"
+  },
+  "code": 403
+/ # curl localhost:8001/api/v1/pods
+{
+  "kind": "Status",
+  "apiVersion": "v1",
+  "metadata": {
+    
+  },
+  "status": "Failure",
+  "message": "pods is forbidden: User \"system:serviceaccount:foo:default\" cannot list resource \"pods\" in API group \"\" at the cluster scope",
+  "reason": "Forbidden",
+  "details": {
+    "kind": "pods"
+  },
+  "code": 403
+}
+```
+可以看到，这个Pod只能列出foo命名空间中的Pod，这也证明了指向一个ClusterRole的RoleBinding只授权获取在RoleBinding命名空间中的资源。
+
+# 3. 总结
+
+Pod使用ServiceAccount来向API服务器表明自己的身份，授权插件，如RBAC插件根据Pod的身份来检测Pod是否具有执行当前操作的权限。
 
 
 
