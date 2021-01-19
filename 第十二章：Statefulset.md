@@ -289,7 +289,7 @@ data-kubia-1   Bound    pv-b     1Mi        RWO                           12m
 
 通信架构如下图
 
-
+![通信架构](https://github.com/OucMan/MY-K8S-ROAD/blob/main/pic/KUBECTL-API.png)
 
 来，操作一下
 
