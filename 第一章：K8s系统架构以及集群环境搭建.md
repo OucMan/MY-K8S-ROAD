@@ -35,7 +35,7 @@ Controller Manager负责管理Cluster各种资源，保证资源处于预期的�
 不同的controller管理不同的资源。例如，replication controller管理Deployment、StatefulSet、DaemonSet的生命周期，namespace controller管理Namespace资源。
 
 ```
-ube-controller-manager 中包含的控制器有：
+kube-controller-manager 中包含的控制器有：
 
 节点控制器： 负责监听节点停机的事件并作出对应响应
 副本控制器： 负责为集群中每一个副本控制器对象（Replication Controller Object）维护期望的 Pod 副本数
