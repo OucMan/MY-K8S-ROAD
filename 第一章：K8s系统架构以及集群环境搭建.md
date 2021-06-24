@@ -45,7 +45,7 @@ Service Account & Token控制器： 负责为新的名称空间创建 default Se
 
 ### 1.2.4 etcd
 
-支持一致性和高可用的名值对存储组件，Kubernetes集群的所有配置信息都存储在etcd中.当数据发生变化时，etcd会快速地通知Kubernetes相关组件，通过 etcd 保证整个 Kubernetes 的 Master 组件的高可用性。
+支持一致性和高可用的名值对存储组件，Kubernetes集群的所有配置信息都存储在etcd中。当数据发生变化时，etcd会快速地通知Kubernetes相关组件，通过 etcd 保证整个 Kubernetes 的 Master 组件的高可用性。
 
 ### 1.2.5 Pod网络
 
