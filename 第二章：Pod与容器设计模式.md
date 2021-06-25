@@ -225,7 +225,7 @@ sudo kubectl -n your_pod_namespace exec -it your_pod_name -c your_container_name
 
 至此，对于Pod我们还差一个事情没有测试，那就是我们还没有测试Pod中的应用业务到底有没有成功运行呢，也就是向该Pod发请求，能不能正常得到响应呢，别急，下面就来测试。
 
-如果想在不涉及Service（后面章节会讲述）的情况下雨与某个Pod进行通信（比如进行调式），我们可以通过kubectl port-forward命令将本机端口收到的信息转发到Pod监听的端口，比如下面的命令可以将机器的本地端口888转发到kubia-manual Pod的端口8080。
+如果想在不涉及Service（后面章节会讲述）的情况下与某个Pod进行通信（比如进行调试），我们可以通过kubectl port-forward命令将本机端口收到的信息转发到Pod监听的端口，比如下面的命令可以将机器的本地端口888转发到kubia-manual Pod的端口8080。
 ```Bash
 sudo kubectl port-forward kubia-manual 8888:8080
 ```
