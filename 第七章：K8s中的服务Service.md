@@ -76,7 +76,7 @@ spec:
 
 # 3. kube-proxy
 
-K8s为Service分配的IP是一个虚拟IP，也就是说集群中不存在一个实体与该IP匹配（直接ping这个IP不同），这个不像Pod的IP。那么客户端访问Service分配的虚拟IP以及端口号的流量是怎样到达对应的Pod的呢，答案就是K8s中的kube-proxy组件。K8s集群中的每个节点都运行了一个kube-proxy，负责将发往Service的流量引导至后端Pod，这里的流量指的是运输层及以上的流量。
+K8s为Service分配的IP是一个虚拟IP，也就是说集群中不存在一个实体与该IP匹配（直接ping这个IP不通），这个不像Pod的IP。那么客户端访问Service分配的虚拟IP以及端口号的流量是怎样到达对应的Pod的呢，答案就是K8s中的kube-proxy组件。K8s集群中的每个节点都运行了一个kube-proxy，负责将发往Service的流量引导至后端Pod，这里的流量指的是运输层及以上的流量。
 
 目前kube-proxy支持三种代理模式：User space代理模式、Iptables代理模式（默认）、以及IPVS代理模式。
 
