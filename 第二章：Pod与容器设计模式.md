@@ -298,7 +298,7 @@ master@k8s-master:~$ sudo kubectl delete pod pod1 pod 2 pod3
 
 现在业务暴露出来的API，比如说有个API的一个格式是A，但是现在有一个外部系统要去访问我的业务容器，它只知道的一种格式是API B,所以要做一个工作，就是把业务容器怎么想办法改掉，要去改业务代码。但实际上，你可以通过一个Adapter帮你来做这层转换。
 
-比如现在业务容器暴露出来的监控接口是/metrics，访问这个这个容器的metrics的这个URL就可以拿到了。可是现在，这个监控系统升级了，它访问的URL是/health，我只认得暴露出health健康检查的URL，才能去做监控，metrics不认识。那这个怎么办？那就需要改代码了，但可以不去改代码，而是额外写一个Adapter，用来把所有对health的这个请求转发给metrics就可以了，所以这个Adapter对外暴露的是health这样一个监控的URL，这就可以了，你的业务就又可以工作了。这样的关键还在于Pod之中的容器是通过localhost直接通信的，所以没有性能损耗，并且这样一个Adapter容器可以被全公司重用起来。
+比如现在业务容器暴露出来的监控接口是/metrics，访问这个容器的metrics的这个URL就可以拿到了。可是现在，这个监控系统升级了，它访问的URL是/health，我只认得暴露出health健康检查的URL，才能去做监控，metrics不认识。那这个怎么办？那就需要改代码了，但可以不去改代码，而是额外写一个Adapter，用来把所有对health的这个请求转发给metrics就可以了，所以这个Adapter对外暴露的是health这样一个监控的URL，这就可以了，你的业务就又可以工作了。这样的关键还在于Pod之中的容器是通过localhost直接通信的，所以没有性能损耗，并且这样一个Adapter容器可以被全公司重用起来。
 
 
 
