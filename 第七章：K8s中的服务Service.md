@@ -236,7 +236,7 @@ kubelet查找有效的Service，并针对每一个Service，向其所在节点�
 
 ## 5.2 DNS
 
-当我们配置完K8s集群环境时，就已经将DNS服务安全，如下图：
+当我们配置完K8s集群环境时，就已经将DNS服务安装，如下图：
 ```
 master@k8s-master:~$ sudo kubectl get pods --all-namespaces
 NAMESPACE     NAME                                 READY   STATUS    RESTARTS   AGE
