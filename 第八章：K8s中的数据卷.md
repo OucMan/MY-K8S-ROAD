@@ -11,6 +11,8 @@ Volume（数据卷）主要解决了如下两方面问题：
 
 容器组、容器、挂载点、数据卷、存储介质的关系如下图：
 
+![PV与PVC](https://github.com/OucMan/MY-K8S-ROAD/blob/main/pic/volume.png)
+
 # 2. 数据卷类型
 
 K8s目前支持多达28种数据卷类型（其中大部分特定于具体的云环境如 GCE/AWS/Azure 等），如需查阅所有的数据卷类型，请查阅官方文档，https://kubernetes.io/docs/concepts/storage/volumes/
